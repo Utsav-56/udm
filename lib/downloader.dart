@@ -2,126 +2,21 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 
-import 'package:path/path.dart';
 import 'package:udm/app_path_helper.dart';
 import 'package:udm/head_parser.dart';
-import 'package:udm/helpers/extensions/date_extensions.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/models/downloader.dart';
 
 import 'helpers/extensions/list_extensions.dart';
 
-/// for verbose mode to store each time and metrics
-class DownloaderMetrics {
-  DateTime? headerRequestStartTime;
-  DateTime? headerRequestEndTime;
-
-  DateTime? fileAllocationStartTime;
-  DateTime? fileAllocationEndTime;
-
-  DateTime? downloadStartTime;
-  DateTime? downloadEndTime;
-
-  final bool isVerbose;
-
-  DownloaderMetrics({required this.isVerbose});
-
-  factory DownloaderMetrics.create() => DownloaderMetrics(isVerbose: false);
-  factory DownloaderMetrics.createVerbose() => DownloaderMetrics(isVerbose: true);
-
-  void logHeaderRequestStart() {
-    headerRequestStartTime = DateTime.now();
-    if (isVerbose) {
-      print("Header request started at: ${headerRequestStartTime!.formatted}");
-    }
-  }
-
-  void logHeaderRequestEnd() {
-    headerRequestEndTime = DateTime.now();
-    if (isVerbose) {
-      print("Header request ended at: ${headerRequestEndTime.formatted}");
-      print(
-        "Header request duration: ${headerRequestEndTime.readableDifference(headerRequestStartTime!)}",
-      );
-    }
-  }
-
-  void logFileAllocationStart() {
-    fileAllocationStartTime = DateTime.now();
-    if (isVerbose) {
-      print("File allocation started at: ${fileAllocationStartTime!.formatted}");
-    }
-  }
-
-  void logFileAllocationEnd() {
-    fileAllocationEndTime = DateTime.now();
-    if (isVerbose) {
-      print("File allocation ended at: ${fileAllocationEndTime.formatted}");
-      print(
-        "File allocation duration: ${fileAllocationEndTime.readableDifference(fileAllocationStartTime!)}",
-      );
-    }
-  }
-
-  void logDownloadStart() {
-    downloadStartTime = DateTime.now();
-    if (isVerbose) {
-      print("Download started at: ${downloadStartTime.formatted}");
-    }
-  }
-
-  void logDownloadEnd() {
-    downloadEndTime = DateTime.now();
-    if (isVerbose) {
-      print("Download ended at: ${downloadEndTime.formatted}");
-      print(
-        "Download duration: ${downloadEndTime.readableDifference(downloadStartTime)}",
-      );
-    }
-  }
-
-  void printSummary(Downloader downloader) {
-    /// we dont care verbose mode or not we always log the summary at the end of the download
-    print("""
-
-\n=============================== Download Summary =================================
-Filename: ${downloader.filenameToUse}
-FilePath: ${downloader.outputPath}
-File Size: ${downloader.headerInfo?.fileSize.humanReadable ?? "Unknown"}
-
-Header Request:
-  Start Time: ${headerRequestStartTime.formatted}
-  End Time: ${headerRequestEndTime.formatted}
-  Duration: ${headerRequestEndTime.readableDifference(headerRequestStartTime)}
-
-File Allocation:
-  Start Time: ${fileAllocationStartTime.formatted}
-  End Time: ${fileAllocationEndTime.formatted}
-  Duration: ${fileAllocationEndTime.readableDifference(fileAllocationStartTime)}
-
-Download:
-  Start Time: ${downloadStartTime.formatted}
-  End Time: ${downloadEndTime.formatted}
-  Duration: ${downloadEndTime.readableDifference(downloadStartTime)}
-==================================================================================\n
-
-""");
-  }
-}
-
 class Downloader {
   final DownloaderConfig config;
   HeaderInfo? headerInfo;
-  late final DownloaderMetrics metrics;
 
-  Downloader({required this.config}) {
-    metrics = config.verbose
-        ? DownloaderMetrics.createVerbose()
-        : DownloaderMetrics.create();
-  }
+  Downloader({required this.config});
 
   Timer? _progressTimer;
-  bool _isMultiStream = false; // to keep track if multi or single
+  bool _isFinished = false;
 
   /// this is to keep track of the overall download status for whole download
   DownloadStatus? overallStatus;
@@ -156,7 +51,6 @@ class Downloader {
     /// in multi stream there is no use of returning the raf so we close it here but in single it is needed so we return it
     if (isMultithread) {
       await raf.close();
-      _isMultiStream = true;
       return null;
     }
 
@@ -177,9 +71,7 @@ class Downloader {
   void startDownload() async {
     final client = HttpClient();
 
-    metrics.logHeaderRequestStart();
     headerInfo = await sendHeadRequest(client, config.url);
-    metrics.logHeaderRequestEnd();
 
     if (headerInfo!.supportsMultiStream && config.downloadType != DownloadType.single) {
       final ranges = headerInfo!.fileSize.bytes.divideIntoParts(8);
@@ -233,10 +125,15 @@ class Downloader {
     /// prepare the timer before spawing isolate
     /// timer is supposed to track the progress
     _progressTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_isFinished) return;
+
       showProgress(statuses, successfulChunks);
 
       /// if all chunks are successful we can finalize the file and dispose the resources
       if (successfulChunks.length == theradCount) {
+        _isFinished = true;
+        timer.cancel();
+        showFinalProgress();
         dispose(receivePort);
       }
     });
@@ -249,7 +146,6 @@ class Downloader {
         outputPath: outputPath,
         filename: filenameToUse,
         progressPort: receivePort.sendPort,
-        metrics: metrics,
       );
 
       Isolate.spawn(downloadWorker, chunk);
@@ -259,8 +155,6 @@ class Downloader {
   /// actually in single stream a same raf can be passed so we take that as param
   Future<void> _downloadSingleStream(RandomAccessFile raf, HttpClient client) async {
     _preInit(false);
-
-    metrics.logDownloadStart();
 
     final request = await client.getUrl(config.url);
     final response = await request.close();
@@ -303,7 +197,7 @@ class Downloader {
     // \x1B[2J = Clear screen, \x1B[0;0H = Move cursor to top-left
     stdout.write('\x1B[2J\x1B[0;0H');
     buffer.writeln(
-      "\n\nFile: $filenameToUse | Size: ${headerInfo!.fileSize.humanReadable}",
+      "\n\nFile: $filenameToUse | (${overallStatus!.totalBytesDownloaded.asFileSize.humanReadable} / ${headerInfo!.fileSize.humanReadable} Downloaded) ",
     );
 
     buffer.writeln("${overallStatus!.makeProgressBar()}");
@@ -334,11 +228,11 @@ class Downloader {
     stdout.write('\x1B[2J\x1B[0;0H');
     StringBuffer buffer = StringBuffer();
 
-    buffer.writeln(
-      "\n\n Download Complete! | File: $filenameToUse | Size: ${headerInfo!.fileSize.humanReadable} ",
-    );
-    buffer.writeln("Download Complete!");
-    buffer.writeln(overallStatus!.makeProgressBar());
+    buffer.writeln("\n\n Download Complete! :: ");
+    buffer.writeln("    File: $filenameToUse (${_resolvedOutputPath}) ");
+    buffer.writeln("    Size: ${headerInfo!.fileSize.humanReadable} ");
+    // buffer.writeln("Download Complete!");
+    // buffer.writeln(overallStatus!.makeProgressBar());
 
     stdout.write(buffer.toString());
     buffer.clear();
@@ -347,8 +241,6 @@ class Downloader {
   void dispose([ReceivePort? port]) {
     _progressTimer?.cancel();
     port?.close();
-    metrics.logDownloadEnd();
-    metrics.printSummary(this);
   }
 }
 

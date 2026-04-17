@@ -102,8 +102,6 @@ class DownloadChunk {
   /// if user has prefreed filename then we will use that else default to the filename from header info, or else "Udm-downloaded-file"
   final String filename;
 
-  final DownloaderMetrics metrics;
-
   final Map<String, String> headers;
 
   const DownloadChunk({
@@ -114,7 +112,6 @@ class DownloadChunk {
     required this.filename,
     required this.progressPort,
     this.headers = const {},
-    required this.metrics,
   });
 
   int get size => range.size;
