@@ -88,8 +88,7 @@ class ChunkMetrics {
 class DownloadChunk {
   final int index;
 
-  final int startByte;
-  final int endByte;
+  final Range range;
 
   /// the main url to download from
   final String url;
@@ -109,8 +108,7 @@ class DownloadChunk {
 
   const DownloadChunk({
     required this.index,
-    required this.startByte,
-    required this.endByte,
+    required this.range,
     required this.url,
     required this.outputPath,
     required this.filename,
@@ -119,11 +117,11 @@ class DownloadChunk {
     required this.metrics,
   });
 
-  int get size => endByte - startByte + 1;
+  int get size => range.size;
 
   @override
   String toString() {
-    return 'Chunk $index: bytes $startByte-$endByte (size: ${size.asFileSize.humanReadable})';
+    return 'Chunk $index: bytes ${range.start}-${range.end} (size: ${size.asFileSize.humanReadable})';
   }
 }
 

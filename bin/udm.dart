@@ -34,11 +34,8 @@ void main(List<String> arguments) {
   );
 
   final downloader = Downloader(config: config);
-  downloader.progressStream.listen((progress) {
-    stdout.write('\rProgress: $progress%');
-  });
 
-  1001.divideIntoParts(8).debug(expectedTotal: 1001);
+  // 1001.divideIntoParts(8).debug(expectedTotal: 1001);
 
-  // downloader.startDownload();
+  downloader.startDownload();
 }
