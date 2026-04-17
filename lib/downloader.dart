@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math';
 
 import 'package:udm/app_path_helper.dart';
 import 'package:udm/head_parser.dart';
@@ -8,6 +9,42 @@ import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/models/downloader.dart';
 
 import 'helpers/extensions/list_extensions.dart';
+
+class TerminalHelper {
+  /// Clears the terminal screen and moves the cursor to the top-left corner.
+  static void clearScreen() {
+    stdout.write('\x1B[2J\x1B[0;0H');
+  }
+
+  static void enableRawMode() {
+    if (stdin.hasTerminal) {
+      stdin.echoMode = false;
+      stdin.lineMode = false;
+      stdin.echoNewlineMode = false;
+    }
+  }
+
+  static void disableRawMode() {
+    if (stdin.hasTerminal) {
+      stdin.echoMode = true;
+      stdin.lineMode = true;
+      stdin.echoNewlineMode = true;
+    }
+  }
+}
+
+void println(String message, [int linesToClean = 1]) {
+  cleanln(linesToClean);
+  stdout.writeln("$message");
+}
+
+/// cleans last n lines in terminal
+void cleanln(int n) {
+  for (int i = 0; i < n; i++) {
+    stdout.write('\x1B[1A'); // Move cursor up one line
+    stdout.write('\x1B[2K'); // Clear the entire line
+  }
+}
 
 class Downloader {
   final DownloaderConfig config;
@@ -17,6 +54,13 @@ class Downloader {
 
   Timer? _progressTimer;
   bool _isFinished = false;
+  StreamSubscription?
+  _inputSubscription; // to listen for user input for pause/resume/cancel commands
+
+  bool _isPaused =
+      false; // to track the paused state of the download, this is used in single stream download
+
+  bool get isPaused => _isPaused;
 
   /// this is to keep track of the overall download status for whole download
   DownloadStatus? overallStatus;
@@ -46,7 +90,9 @@ class Downloader {
   Future<RandomAccessFile?> _preInit([bool isMultithread = false]) async {
     overallStatus = DownloadStatus(totalSize: headerInfo?.fileSize.bytes ?? 0);
 
+    println("Preparing file for download at: $outputPath", 2);
     final raf = await makeFile();
+    println("File prepared successfully.");
 
     /// in multi stream there is no use of returning the raf so we close it here but in single it is needed so we return it
     if (isMultithread) {
@@ -69,15 +115,27 @@ class Downloader {
   }
 
   void startDownload() async {
+    /// we keep this in print to clean later
+    print("Starting download for: ${config.url}");
     final client = HttpClient();
+    println("Sending HEAD request to fetch file info...");
 
     headerInfo = await sendHeadRequest(client, config.url);
+    println("Received file info:\n$headerInfo", 2);
 
     if (headerInfo!.supportsMultiStream && config.downloadType != DownloadType.single) {
+      println(
+        "Server supports multi-stream download. Starting multi-threaded download...",
+      );
       final ranges = headerInfo!.fileSize.bytes.divideIntoParts(8);
       _downloadMultiStream(ranges);
     } else {
       final raf = await _preInit(false);
+
+      println(
+        "Server does not support multi-stream download or single stream download is forced. Starting single-threaded download...",
+      );
+
       _downloadSingleStream(raf!, client);
     }
   }
@@ -99,10 +157,68 @@ class Downloader {
     final successfulChunks =
         <int>{}; // to keep track of successful chunks for finalizing the file
 
+    final List<Isolate> isolates =
+        []; // to keep track of isolates so we can kill them if needed
+
+    int readyWorkers =
+        0; // to track how many workers are ready before starting the timer and accepting commands
+    final Map<int, SendPort> commandPorts = {};
+
+    TerminalHelper.clearScreen();
+    TerminalHelper.enableRawMode();
+
+    _inputSubscription = stdin.listen((data) {
+      final acceptableCommands = ['p', 'r', 'c'];
+
+      for (var byte in data) {
+        final char = String.fromCharCode(byte).toLowerCase();
+
+        if (acceptableCommands.contains(char)) {
+          if (readyWorkers < theradCount) {
+            println(
+              "Workers are not ready yet. Please wait until all workers are ready to accept commands.",
+            );
+            return;
+          }
+        }
+
+        switch (char) {
+          case 'p':
+            for (var port in commandPorts.values) {
+              port.send("pause");
+            }
+            _isPaused = true;
+            break;
+
+          case 'r':
+            for (var port in commandPorts.values) {
+              port.send("resume");
+            }
+            _isPaused = false;
+            break;
+
+          case 'c':
+            for (var port in commandPorts.values) {
+              port.send("cancel");
+            }
+            TerminalHelper.disableRawMode();
+            dispose(receivePort);
+            print("\nDownload cancelled by user.");
+            exit(0);
+        }
+      }
+    });
+
     receivePort.listen((message) {
       if (message is Map<String, dynamic>) {
         int chunkIndex = message["chunkIndex"];
         final workerMessage = messages[chunkIndex].update(message);
+
+        if (workerMessage.isInitial) {
+          commandPorts[chunkIndex] = message["commandPort"];
+          readyWorkers++;
+          return; // we dont need to do anything else for initial message
+        }
 
         /// very first check if it is success or not;
         if (workerMessage.isSuccess) {
@@ -119,12 +235,20 @@ class Downloader {
           (sum, status) => sum + status.totalBytesDownloaded,
         );
         overallStatus!.update({"overallProgress": overallProgress});
+        return;
       }
     });
 
     /// prepare the timer before spawing isolate
     /// timer is supposed to track the progress
-    _progressTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (readyWorkers < theradCount) {
+        println(
+          "Only $readyWorkers/${theradCount} workers are ready. Waiting for all workers to be ready before showing progress...",
+        );
+        return;
+      }
+
       if (_isFinished) return;
 
       showProgress(statuses, successfulChunks);
@@ -148,24 +272,22 @@ class Downloader {
         progressPort: receivePort.sendPort,
       );
 
-      Isolate.spawn(downloadWorker, chunk);
+      final isolate = await Isolate.spawn(downloadWorker, chunk);
+      isolates.add(isolate);
     }
   }
 
   /// actually in single stream a same raf can be passed so we take that as param
+  /// pre init is already done before calling so we wont repeat here
   Future<void> _downloadSingleStream(RandomAccessFile raf, HttpClient client) async {
-    _preInit(false);
-
     final request = await client.getUrl(config.url);
     final response = await request.close();
-
-    // Use writeOnly so we don't truncate the pre-allocated file
 
     int bytesReceived = 0;
     final totalSize = headerInfo!.fileSize.bytes;
 
     /// init a timer for progress tracking
-    _progressTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
       showProgress();
     });
 
@@ -180,12 +302,29 @@ class Downloader {
     dispose();
   }
 
+  void cancelDownload([ReceivePort? receivePort]) {
+    TerminalHelper.disableRawMode();
+    dispose(receivePort);
+
+    /// also delete the file because it is incomplete and we dont want to leave junk files
+    if (_resolvedOutputPath != null) {
+      final file = File(_resolvedOutputPath!);
+      if (file.existsSync()) {
+        file.deleteSync();
+      }
+    }
+
+    print("\nDownload cancelled by user.");
+    exit(0);
+  }
+
   /// A unified method to show progress for both single and multi stream downloads, it takes an optional parameter of list of chunk statuses which is used in multi stream download to show the progress of each chunk as well
   /// in case of single stream download the parameter will be null and it will just show the overall progress
   void showProgress([List<DownloadStatus>? statuses, Set<int>? successfulChunks]) {
     successfulChunks ??= {}; // initialize to empty set if null
 
     overallStatus!.timerTick();
+
     if (statuses != null) {
       for (var status in statuses) {
         status.timerTick(); // timer tick is harmless so i left as it is
@@ -200,7 +339,7 @@ class Downloader {
       "\n\nFile: $filenameToUse | (${overallStatus!.totalBytesDownloaded.asFileSize.humanReadable} / ${headerInfo!.fileSize.humanReadable} Downloaded) ",
     );
 
-    buffer.writeln("${overallStatus!.makeProgressBar()}");
+    buffer.writeln("${overallStatus!.makeProgressBar(isPaused: _isPaused)}");
 
     if (statuses != null) {
       if (successfulChunks.isNotEmpty) {
@@ -214,11 +353,14 @@ class Downloader {
           continue;
         }
 
-        buffer.writeln('Chunk ${i + 1}: \n${statuses[i].makeProgressBar()}');
+        buffer.writeln(
+          'Chunk ${i + 1}: \n${statuses[i].makeProgressBar(isPaused: _isPaused)}',
+        );
       }
-    } else {
-      buffer.writeln(overallStatus!.makeProgressBar());
     }
+
+    /// the keys helper menu
+    buffer.writeln("\n\nControls: \n p: Pause \n r: Resume \n c: Cancel");
 
     stdout.write(buffer.toString());
     buffer.clear();
@@ -241,6 +383,7 @@ class Downloader {
   void dispose([ReceivePort? port]) {
     _progressTimer?.cancel();
     port?.close();
+    _inputSubscription?.cancel();
   }
 }
 
@@ -313,8 +456,12 @@ class DownloadStatus {
 
   /// makes a bar such as
   /// [██████----------] 30% | Speed: 500 KB/s | ETA: 1m 20s left
-  String makeProgressBar({int? barLength}) {
-    String suffix = "${progressPercent.toStringAsFixed(2)}% | Speed: $speed | ETA: $eta";
+  String makeProgressBar({int? barLength, isPaused = false}) {
+    String suffix = "${progressPercent.toStringAsFixed(2)}% ";
+    if (!isPaused) {
+      suffix += "| Speed: $speed | ETA: $eta"; // speed is undefined in pause state
+    }
+
     final width = stdout.hasTerminal ? stdout.terminalColumns : 80;
 
     /// if width is less then the suffix
@@ -327,8 +474,23 @@ class DownloadStatus {
     }
 
     final filledLength = ((progressPercent / 100) * barLength).round();
-    String bar = '█' * filledLength + '-' * (barLength - filledLength);
 
+    List<String> barChars = List.generate(barLength, (i) {
+      return i < filledLength ? '█' : '-';
+    });
+
+    if (isPaused) {
+      final pausedText = " Paused ";
+      final start = (barLength / 2 - pausedText.length / 2).floor();
+
+      for (int i = 0; i < pausedText.length; i++) {
+        if (start + i < barChars.length) {
+          barChars[start + i] = pausedText[i];
+        }
+      }
+    }
+
+    final bar = barChars.join();
     return "[$bar] $suffix";
   }
 }
@@ -348,6 +510,9 @@ class WorkerMessage {
   int? newStartByte;
   int? newEndByte;
 
+  /// in case of init
+  SendPort? commandPort;
+
   WorkerMessage({
     required this.chunkIndex,
     required this.progressData,
@@ -358,6 +523,7 @@ class WorkerMessage {
     this.newEndByte,
   });
 
+  bool get isInitial => status == "initial";
   bool get isSuccess => status == "complete";
   bool get isError => status == "error";
   bool get isProgressUpdate => status == "progress";
@@ -407,6 +573,29 @@ void downloadWorker(DownloadChunk chunk) async {
   final client = HttpClient();
   final file = await File(chunk.outputPath).open(mode: FileMode.append);
 
+  bool isPaused = false; // This will track the paused state of the worker
+  bool isCancelled = false; // This will track the cancelled state of the worker
+
+  final ReceivePort commandPort = ReceivePort();
+  commandPort.listen((message) {
+    // Here you can handle commands from the main isolate, such as pause, resume, or cancel
+    // For example:
+    if (message == "pause") {
+      isPaused = true;
+    } else if (message == "resume") {
+      isPaused = false;
+    } else if (message == "cancel") {
+      isCancelled = true;
+      commandPort.close();
+    }
+  });
+
+  chunk.progressPort.send({
+    "chunkIndex": chunk.index,
+    "status": "initial",
+    "commandPort": commandPort.sendPort,
+  }); // Send the command port to the main isolate so it can send commands to this worker
+
   /// the local progress of the chunk download which will be sent to the main isolate to update the overall progress
   /// indicates the no of bytes downloaded in this chunk so far
   /// in case of error we will add this in the start value and make new start value to retry the remaining bytes
@@ -426,6 +615,18 @@ void downloadWorker(DownloadChunk chunk) async {
     /// move the needle to the start byte of the chunk
     await file.setPosition(chunk.range.start);
     await for (var data in response) {
+      /// do infinite buffering if paused
+      /// we can adjust this delay as needed, this is just to prevent busy waiting
+      while (isPaused) {
+        await Future.delayed(const Duration(milliseconds: 300));
+
+        /// throwing exception is the best because catch will auto find the remaining part of chunk
+        /// also the final cleanup of file will happen, so this is better then returning and leaving the file open and resources hanging
+        if (isCancelled) {
+          throw Exception("Download cancelled");
+        }
+      }
+
       await file.writeFrom(data);
 
       overallProgress += data.length;

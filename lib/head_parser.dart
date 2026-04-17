@@ -26,9 +26,7 @@ class HeaderInfo {
 
   @override
   String toString() {
-    return 'Filename: $filename\n'
-        'File Size: ${fileSize.humanReadable}\n'
-        'Accepts Ranges: $acceptsRanges';
+    return "Filename: $filename | File Size: ${fileSize.humanReadable} | Accepts Ranges: $acceptsRanges'";
   }
 
   factory HeaderInfo.fromResponse(HttpClientResponse response) {
