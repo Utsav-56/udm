@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:isolate';
 
-import 'package:udm/app_path_helper.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
+import 'package:udm/path_helpers/path_helpers.dart';
 
 /// Download type specifies what method of download the downloader should use
 ///

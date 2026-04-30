@@ -11,8 +11,6 @@ mixin PathHelper {
     throw e;
   }
 
-  // --- Path manipulations ---
-
   /// Joins multiple path parts into a single path.
   String join(String part1, [String? part2, String? part3, String? part4]) {
     String res = part1;
@@ -80,7 +78,7 @@ mixin PathHelper {
   }
 
   /// Creates a directory and all its parent directories.
-  /// 
+  ///
   /// Returns `true` if successful or if it already exists.
   bool mkDirAll(String path) {
     try {
@@ -89,6 +87,55 @@ mixin PathHelper {
     } catch (e) {
       _handleError(e, "Path.mkDirAll");
       return false;
+    }
+  }
+
+  /// Returns the user home dir of the current platform system
+  /// it relies on the Environment variables (userprofile on Windows,
+  /// HOME on Linux and macOS)
+  String getHomeDir() =>
+      Platform.environment['userprofile'] ?? Platform.environment['HOME'] ?? "";
+
+  /// Returns users download dir.
+  /// Returns the Downloads Directory with validation
+  Directory? getDownloadDir() {
+    String path;
+    String home = getHomeDir();
+    if (Platform.isWindows) {
+      path = '${Platform.environment['USERPROFILE']}\\Downloads';
+    } else if (Platform.isMacOS) {
+      path = '$home/Downloads';
+    } else {
+      // Linux: Check XDG standard first, then fallback
+      path = Platform.environment['XDG_DOWNLOAD_DIR'] ?? '$home/Downloads';
+    }
+
+    return _getValidatedDir(path);
+  }
+
+  /// Returns the Documents Directory
+  Directory? getDocumentsDir() {
+    String path;
+    String home = getHomeDir();
+    if (Platform.isWindows) {
+      path = '${Platform.environment['USERPROFILE']}\\Documents';
+    } else {
+      path = '$home/Documents';
+    }
+
+    return _getValidatedDir(path);
+  }
+
+  Directory? _getValidatedDir(String path) {
+    try {
+      final dir = Directory(path);
+      if (dir.existsSync()) {
+        return dir;
+      }
+      return null;
+    } catch (e) {
+      _handleError(e, "Path._getValidatedDir");
+      return null;
     }
   }
 
@@ -152,7 +199,7 @@ mixin PathHelper {
   // --- CRUD operations on files and directories ---
 
   /// Copies a file from [source] to [destination].
-  /// 
+  ///
   /// If [forceReplace] is `true`, it will overwrite the destination file if it already exists.
   /// Returns `true` if the copy was successful, `false` otherwise.
   bool copyFile(String source, String destination, {bool forceReplace = false}) {
@@ -180,7 +227,7 @@ mixin PathHelper {
   }
 
   /// Copies a directory from [source] to [destination].
-  /// 
+  ///
   /// If [forceReplace] is `true`, it will overwrite the destination directory if it already exists.
   /// Returns `true` if the copy was successful, `false` otherwise.
   bool copyDir(String source, String destination, {bool forceReplace = false}) {
@@ -204,7 +251,7 @@ mixin PathHelper {
       }
 
       destDir.createSync(recursive: true);
-      
+
       for (final entity in dir.listSync(recursive: true, followLinks: false)) {
         final relativePath = pth.relative(entity.path, from: source);
         final newPath = pth.join(destination, relativePath);
@@ -228,7 +275,7 @@ mixin PathHelper {
   }
 
   /// Moves a file from [source] to [destination].
-  /// 
+  ///
   /// If [forceReplace] is `true`, it will overwrite the destination file if it already exists.
   /// Returns `true` if the move was successful, `false` otherwise.
   bool moveFile(String source, String destination, {bool forceReplace = false}) {
@@ -256,7 +303,7 @@ mixin PathHelper {
   }
 
   /// Moves a directory from [source] to [destination].
-  /// 
+  ///
   /// If [forceReplace] is `true`, it will overwrite the destination directory if it already exists.
   /// Returns `true` if the move was successful, `false` otherwise.
   bool moveDir(String source, String destination, {bool forceReplace = false}) {
@@ -320,7 +367,7 @@ mixin PathHelper {
   }
 
   /// Deletes a file at the given [path].
-  /// 
+  ///
   /// Returns `true` if the deletion was successful, `false` otherwise.
   bool deleteFile(String path) {
     try {
@@ -337,7 +384,7 @@ mixin PathHelper {
   }
 
   /// Deletes a directory at the given [path].
-  /// 
+  ///
   /// If [recursive] is `true`, it deletes all nested files and directories.
   /// Returns `true` if the deletion was successful, `false` otherwise.
   bool deleteDir(String path, {bool recursive = false}) {
@@ -481,7 +528,11 @@ mixin PathHelper {
   ///
   /// If [recursive] is `true`, it lists all nested entities.
   /// If [followLinks] is `true`, it follows symbolic links.
-  List<FileSystemEntity> list(String path, {bool recursive = false, bool followLinks = false}) {
+  List<FileSystemEntity> list(
+    String path, {
+    bool recursive = false,
+    bool followLinks = false,
+  }) {
     try {
       final dir = Directory(path);
       if (!dir.existsSync()) return [];
