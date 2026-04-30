@@ -2,9 +2,13 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:udm/app_path_helper.dart';
-import 'package:udm/downloader.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
 
+/// Download type specifies what method of download the downloader should use
+///
+/// It can either be single or smart download.
+///
+/// We cannot always ensure that multi stream is possible so, there is no multi stream only type
 enum DownloadType {
   /// forces the downloader to use single stream download
   /// even if the server supports range requests. This is useful for testing and for servers that have issues with range requests.
@@ -16,11 +20,38 @@ enum DownloadType {
   smart,
 }
 
+/// The config needed for downloader to download the file.
+/// It includes all the configs or that the downloader needs to set before starting the download
 class DownloaderConfig {
+  /// the url of the file to be downloaded
+  ///
+  /// it is required and cannot be empty
   late final Uri url;
+
+  /// the directory where the downloaded file will be saved
+  /// If not provided then it will use the default download directory of the system or the current directory as fallback
+  ///
+  /// it is optional but if provided then, ensure that the path is valid and you actually have write prrmisisons in that directory,
+  /// otherwise it will throw an error when the downloader tries to save the file
   late final String outputDir;
+
+  /// the preferred filename that you want to use for the saved file,
+  /// it is purely optional
+  /// if not provided then we will try to get the filename from header info, url respectively, or else we will default to "Udm-downloaded-file"
+  ///
+  /// If provided and the filename already exists then a unique suffix will automatically be added to the filename to avoid the overwritting issue of existing file
+  ///
   final String? preferredFilename;
+
+  /// This is for debugging purpose,
+  /// if it is verbose then it will print the logs of the download process in the terminals std io, otherwise it will not print any logs
+  /// it is purely optional and  defaults to false
+  ///
+  /// this will just print the logs in terminal,
+  /// but if the process is not attached to a terminal then no matter if user gives verbose or not it will be false in that case.
   final bool verbose;
+
+  /// the [DownloadType] that the downloader will use to download the file, it is optional and defaults to [DownloadType.smart]
   final DownloadType downloadType;
 
   DownloaderConfig({

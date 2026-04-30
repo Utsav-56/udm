@@ -1,12 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:math';
 
-import 'package:udm/app_path_helper.dart';
 import 'package:udm/head_parser.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
-import 'package:udm/models/downloader.dart';
+import 'package:udm/models/downloader_models.dart';
+import 'package:udm/path_helpers/path_helpers.dart';
 
 import 'helpers/extensions/list_extensions.dart';
 

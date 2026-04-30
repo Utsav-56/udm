@@ -1,4 +1,4 @@
-import 'package:udm/models/downloader.dart';
+import 'package:udm/models/downloader_models.dart';
 
 class Range {
   final int start;
