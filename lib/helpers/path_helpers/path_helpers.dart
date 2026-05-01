@@ -1,5 +1,5 @@
-import 'package:udm/path_helpers/async/async_helpers.dart';
-import 'package:udm/path_helpers/sync/sync_helper.dart';
+import 'package:udm/helpers/path_helpers/async/async_helpers.dart';
+import 'package:udm/helpers/path_helpers/sync/sync_helper.dart';
 
 /// This file is just an export file for all the path helper functions and classes
 ///

@@ -4,7 +4,7 @@ import 'package:args/args.dart';
 import 'package:udm/downloader.dart';
 import 'package:udm/head_parser.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
-import 'package:udm/models/downloader_models.dart';
+import 'package:udm/models/downloader_config.dart';
 
 const String version = '0.0.1';
 

@@ -4,6 +4,64 @@ import 'dart:typed_data';
 import 'package:path/path.dart' as pth;
 import 'package:udm/helpers/extensions/string_extension.dart';
 
+/// constants for the file types
+const Map<String, List<String>> fileTypes = {
+  "Documents": [
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
+    ".txt",
+    ".rtf",
+    ".odt",
+    ".ods",
+    ".odp",
+    ".csv",
+  ],
+  "Images": [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".webp",
+    ".bmp",
+    ".tiff",
+    ".svg",
+    ".heic",
+    ".avif",
+  ],
+  "Videos": [
+    ".mp4",
+    ".mkv",
+    ".avi",
+    ".mov",
+    ".wmv",
+    ".flv",
+    ".webm",
+    ".mpeg",
+    ".mpg",
+    ".3gp",
+    ".ts",
+  ],
+  "Audio": [".mp3", ".aac", ".wav", ".flac", ".ogg", ".m4a", ".wma", ".opus", ".amr"],
+  "Compressed": [".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".iso"],
+  "Executable": [
+    ".exe",
+    ".msi",
+    ".apk",
+    ".dmg",
+    ".deb",
+    ".rpm",
+    ".app",
+    ".jar",
+    ".sh",
+    ".bat",
+  ],
+};
+
 /// A mixin containing synchronous file system path manipulation and operations.
 mixin PathHelper {
   void _handleError(Object e, String method) {
@@ -12,12 +70,38 @@ mixin PathHelper {
   }
 
   /// Joins multiple path parts into a single path.
-  String join(String part1, [String? part2, String? part3, String? part4]) {
+  String join(
+    String part1, [
+    String? part2,
+    String? part3,
+    String? part4,
+    String? part5,
+    String? part6,
+  ]) {
     String res = part1;
     if (part2 != null) res = pth.join(res, part2);
     if (part3 != null) res = pth.join(res, part3);
     if (part4 != null) res = pth.join(res, part4);
+    if (part5 != null) res = pth.join(res, part5);
+    if (part6 != null) res = pth.join(res, part6);
     return res;
+  }
+
+  /// this is a unique helper which returns null if the given path join does not results in a existing path
+  /// otherwise returns the joined path
+  String? joinExisting(
+    String path1, [
+    String? part2,
+    String? part3,
+    String? part4,
+    String? part5,
+    String? part6,
+  ]) {
+    final joinedPath = join(path1, part2, part3, part4, part5, part6);
+    if (exists(joinedPath)) {
+      return joinedPath;
+    }
+    return null;
   }
 
   /// Checks if two paths are equal.
@@ -82,12 +166,35 @@ mixin PathHelper {
   /// Returns `true` if successful or if it already exists.
   bool mkDirAll(String path) {
     try {
-      Directory(path).createSync(recursive: true);
+      /// if path is not a valid dir then throw error
+      final pathType = typeOf(path, followLinks: false);
+      if (pathType == FileSystemEntityType.file ||
+          pathType == FileSystemEntityType.link) {
+        throw ArgumentError("Path cannot be a file or a link");
+      }
+
+      /// if path is a dir but not exists then create it
+      if (pathType == FileSystemEntityType.notFound) {
+        Directory(path).createSync(recursive: true);
+      }
       return true;
     } catch (e) {
       _handleError(e, "Path.mkDirAll");
       return false;
     }
+  }
+
+  /// returns the type of file based on the extension of the file
+  String getFileType(String filename) {
+    final ext = extension(filename);
+    for (final type in fileTypes.entries) {
+      if (type.value.contains(ext)) {
+        return type.key;
+      }
+    }
+
+    // if not found then return empty string.
+    return "";
   }
 
   /// Returns the user home dir of the current platform system
@@ -98,7 +205,7 @@ mixin PathHelper {
 
   /// Returns users download dir.
   /// Returns the Downloads Directory with validation
-  Directory? getDownloadDir() {
+  String getDownloadDir() {
     String path;
     String home = getHomeDir();
     if (Platform.isWindows) {
@@ -110,11 +217,11 @@ mixin PathHelper {
       path = Platform.environment['XDG_DOWNLOAD_DIR'] ?? '$home/Downloads';
     }
 
-    return _getValidatedDir(path);
+    return path;
   }
 
   /// Returns the Documents Directory
-  Directory? getDocumentsDir() {
+  String getDocumentsDir() {
     String path;
     String home = getHomeDir();
     if (Platform.isWindows) {
@@ -123,7 +230,7 @@ mixin PathHelper {
       path = '$home/Documents';
     }
 
-    return _getValidatedDir(path);
+    return path;
   }
 
   Directory? _getValidatedDir(String path) {
@@ -150,7 +257,7 @@ mixin PathHelper {
   /// until a unique name is found.
   ///
   /// This function does not create the file or directory, it just generates a unique name.
-  String? getUniqueName(String path) {
+  String getUniqueName(String path) {
     try {
       final typeOfPath = typeOf(path, followLinks: false);
 
@@ -189,7 +296,7 @@ mixin PathHelper {
       return newPath;
     } catch (e) {
       _handleError(e, "Path.getUniqueName");
-      return null;
+      rethrow;
     }
   }
 

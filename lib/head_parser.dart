@@ -2,8 +2,9 @@
 import 'dart:io';
 
 import 'package:udm/helpers/extensions/int_extensions.dart';
-import 'package:udm/models/downloader_models.dart';
-import 'package:udm/path_helpers/path_helpers.dart';
+import 'package:udm/models/downloader_config.dart';
+import 'package:udm/models/metrics_models.dart';
+import 'package:udm/helpers/path_helpers/path_helpers.dart';
 
 const demoUrl =
     "https://drive.usercontent.google.com/download?id=1d1EBTcLHYQiv93O4nyBBjbK_Wc-2f5qX&export=download&authuser=0&confirm=t&uuid=dd710d80-2b80-47e6-9768-41730efed5c1&at=ALBwUgkj_7i0p2ZZsknUP43DWlJS:1776241352545";

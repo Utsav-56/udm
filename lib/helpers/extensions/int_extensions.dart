@@ -1,4 +1,5 @@
-import 'package:udm/models/downloader_models.dart';
+import 'package:udm/models/downloader_config.dart';
+import 'package:udm/models/metrics_models.dart';
 
 class Range {
   final int start;

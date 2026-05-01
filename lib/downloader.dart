@@ -4,48 +4,102 @@ import 'dart:isolate';
 
 import 'package:udm/head_parser.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
-import 'package:udm/models/downloader_models.dart';
-import 'package:udm/path_helpers/path_helpers.dart';
-
+import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
+import 'package:udm/models/downloader_config.dart';
+import 'package:udm/models/metrics_models.dart';
+import 'package:udm/helpers/path_helpers/path_helpers.dart';
 import 'helpers/extensions/list_extensions.dart';
 
-class TerminalHelper {
-  /// Clears the terminal screen and moves the cursor to the top-left corner.
-  static void clearScreen() {
-    stdout.write('\x1B[2J\x1B[0;0H');
+/// This value will be sent to the downloader to pause the download
+const int downloadPauseSignal = 0;
+
+/// This value will be sent to the downloader to cancel the download
+const int downloadCancelSignal = -1;
+
+/// This value will be sent to the downloader to resume the download
+const int downloadResumeSignal = 1;
+
+/// A base class for the downloader
+/// the multiThreadDownloader and Single downloader should be the child classes of this clas
+
+/// The blueprint for all Downloader implementations.
+/// This handles the state management and provides a stream for progress updates.
+abstract class Downloader {
+  final DownloaderConfig config;
+
+  // State Tracking
+  bool _isPaused = false;
+  bool _isCancelled = false;
+  DownloadStatus? status;
+
+  // Stream controller to broadcast updates (Auto-updating values)
+  final StreamController<DownloadStatus> _progressController =
+      StreamController<DownloadStatus>.broadcast();
+
+  Downloader({required this.config});
+
+  /// The external API to listen for progress updates.
+  Stream<DownloadStatus> get progressStream => _progressController.stream;
+
+  bool get isPaused => _isPaused;
+  bool get isCancelled => _isCancelled;
+
+  /// Starts the download process.
+  Future<void> start();
+
+  /// Pauses the current data stream.
+  void pause() {
+    if (_isPaused || _isCancelled) return;
+    _isPaused = true;
+    _onStateChanged();
   }
 
-  static void enableRawMode() {
-    if (stdin.hasTerminal) {
-      stdin.echoMode = false;
-      stdin.lineMode = false;
-      stdin.echoNewlineMode = false;
+  /// Resumes the data stream.
+  void resume() {
+    if (!_isPaused || _isCancelled) return;
+    _isPaused = false;
+    _onStateChanged();
+  }
+
+  /// Cancels the download and triggers cleanup.
+  Future<void> cancel() async {
+    _isCancelled = true;
+    _isPaused = false;
+    await cleanup();
+    _onStateChanged();
+  }
+
+  /// Allocates space on the disk before downloading starts.
+  /// This ensures we don't run out of space halfway through.
+  Future<RandomAccessFile> _prepareFile(int totalBytes) async {
+    final file = File(config.absoluteFilename);
+    if (!await file.parent.exists()) {
+      await file.parent.create(recursive: true);
+    }
+    final raf = await file.open(mode: FileMode.write);
+    await raf.truncate(totalBytes);
+    return raf;
+  }
+
+  /// Broadcasts the current status to any listeners.
+  void notifyListeners() {
+    if (status != null && !_progressController.isClosed) {
+      _progressController.add(status!);
     }
   }
 
-  static void disableRawMode() {
-    if (stdin.hasTerminal) {
-      stdin.echoMode = true;
-      stdin.lineMode = true;
-      stdin.echoNewlineMode = true;
-    }
+  /// Logic to delete partial files or close ports upon cancellation.
+  Future<void> cleanup() async {
+    await _progressController.close();
+  }
+
+  /// Internal hook for state changes.
+  void _onStateChanged() {
+    // Logic to handle terminal updates or logging
   }
 }
 
-void println(String message, [int linesToClean = 1]) {
-  cleanln(linesToClean);
-  stdout.writeln("$message");
-}
-
-/// cleans last n lines in terminal
-void cleanln(int n) {
-  for (int i = 0; i < n; i++) {
-    stdout.write('\x1B[1A'); // Move cursor up one line
-    stdout.write('\x1B[2K'); // Clear the entire line
-  }
-}
-
-class Downloader {
+class __Downloader {
   final DownloaderConfig config;
   HeaderInfo? headerInfo;
 

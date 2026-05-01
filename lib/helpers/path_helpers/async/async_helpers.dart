@@ -94,7 +94,11 @@ mixin PathHelperAsync {
       return false;
     } catch (e) {
       // Fallback for cross device move error
-      return await _copyAndDeleteFileAsync(source, destination, forceReplace: forceReplace);
+      return await _copyAndDeleteFileAsync(
+        source,
+        destination,
+        forceReplace: forceReplace,
+      );
     }
   }
 
@@ -165,7 +169,11 @@ mixin PathHelperAsync {
   /// Moves a directory from [source] to [destination] asynchronously.
   ///
   /// Returns `true` if the move was successful, `false` otherwise.
-  Future<bool> moveDirAsync(String source, String destination, {bool forceReplace = false}) async {
+  Future<bool> moveDirAsync(
+    String source,
+    String destination, {
+    bool forceReplace = false,
+  }) async {
     try {
       final dir = Directory(source);
       if (!await dir.exists()) {
@@ -189,7 +197,11 @@ mixin PathHelperAsync {
       return true;
     } catch (e) {
       // Fallback in case of cross-device rename failure
-      return await _copyAndDeleteDirAsync(source, destination, forceReplace: forceReplace);
+      return await _copyAndDeleteDirAsync(
+        source,
+        destination,
+        forceReplace: forceReplace,
+      );
     }
   }
 
@@ -274,9 +286,12 @@ mixin PathHelperAsync {
   }
 
   /// Returns the type of the file system entity at the given path asynchronously.
-  /// 
+  ///
   /// If [followLinks] is true, symbolic links will be followed.
-  Future<FileSystemEntityType> typeOfAsync(String path, {bool followLinks = false}) async {
+  Future<FileSystemEntityType> typeOfAsync(
+    String path, {
+    bool followLinks = false,
+  }) async {
     try {
       return await FileSystemEntity.type(path, followLinks: followLinks);
     } catch (e) {
@@ -286,7 +301,7 @@ mixin PathHelperAsync {
   }
 
   /// Generates a unique name appending `-(idx)` until a unique name is found asynchronously.
-  /// 
+  ///
   /// This does not create the entity, it only generates a name.
   Future<String?> getUniqueNameAsync(String path) async {
     try {
@@ -321,7 +336,8 @@ mixin PathHelperAsync {
       do {
         newPath = pth.join(dir, "$base($idx)$ext");
         idx++;
-      } while (await typeOfAsync(newPath, followLinks: false) != FileSystemEntityType.notFound);
+      } while (await typeOfAsync(newPath, followLinks: false) !=
+          FileSystemEntityType.notFound);
 
       return newPath;
     } catch (e) {
@@ -331,10 +347,14 @@ mixin PathHelperAsync {
   }
 
   /// Copies a directory from [source] to [destination] asynchronously.
-  /// 
+  ///
   /// If [forceReplace] is `true`, it will overwrite the destination if it exists.
   /// Returns `true` if successful, `false` otherwise.
-  Future<bool> copyDirAsync(String source, String destination, {bool forceReplace = false}) async {
+  Future<bool> copyDirAsync(
+    String source,
+    String destination, {
+    bool forceReplace = false,
+  }) async {
     try {
       final dir = Directory(source);
       if (!await dir.exists()) {
@@ -355,7 +375,7 @@ mixin PathHelperAsync {
       }
 
       await destDir.create(recursive: true);
-      
+
       await for (final entity in dir.list(recursive: true, followLinks: false)) {
         final relativePath = pth.relative(entity.path, from: source);
         final newPath = pth.join(destination, relativePath);
@@ -397,7 +417,11 @@ mixin PathHelperAsync {
   }
 
   /// Fallback to copy and then delete a directory asynchronously for cross-device moves.
-  Future<bool> _copyAndDeleteDirAsync(String source, String destination, {bool forceReplace = false}) async {
+  Future<bool> _copyAndDeleteDirAsync(
+    String source,
+    String destination, {
+    bool forceReplace = false,
+  }) async {
     try {
       if (await copyDirAsync(source, destination, forceReplace: forceReplace)) {
         await Directory(source).delete(recursive: true);
@@ -507,7 +531,11 @@ mixin PathHelperAsync {
   }
 
   /// Writes bytes to a file asynchronously.
-  Future<bool> writeAsBytesAsync(String path, Uint8List bytes, {bool append = false}) async {
+  Future<bool> writeAsBytesAsync(
+    String path,
+    Uint8List bytes, {
+    bool append = false,
+  }) async {
     try {
       final file = File(path);
       if (!await file.exists()) await file.create(recursive: true);
@@ -533,7 +561,11 @@ mixin PathHelperAsync {
   }
 
   /// Returns a stream of entities in the directory at the given [path] asynchronously.
-  Stream<FileSystemEntity> listAsync(String path, {bool recursive = false, bool followLinks = false}) {
+  Stream<FileSystemEntity> listAsync(
+    String path, {
+    bool recursive = false,
+    bool followLinks = false,
+  }) {
     try {
       return Directory(path).list(recursive: recursive, followLinks: followLinks);
     } catch (e) {
