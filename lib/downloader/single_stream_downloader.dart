@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:udm/downloader/downloader.dart';
 import 'package:udm/head_parser.dart';
+import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
 
 /// A single stream download class
 /// it extends the downloader class and implements the start method
@@ -17,13 +18,17 @@ class SingleStreamDownloader extends Downloader {
 
   @override
   Future<void> tryHeadRequest() async {
-    headerInfo = await sendHeadRequest(_client, config.url);
+    headerInfo = await sendHeadRequest(_client, config.url, logBuffer);
   }
 
   @override
   Future<void> start() async {
     await init();
+
+    logBuffer.writeInfo("Starting download...");
     status.markStarted();
+    logBuffer.cleanln(5); // 5 for those header info lines
+    logBuffer.clean();
 
     final request = await _client.getUrl(config.url);
     final response = await request.close();
@@ -56,31 +61,10 @@ class SingleStreamDownloader extends Downloader {
     _client.close();
   }
 
-  int _lastLineCount = 0;
-  void _cleanLastLinesAndPrint(String text) {
-    final currentLines = text.split('\n');
-
-    // 1. Move cursor back to the start of our previous output block
-    if (_lastLineCount > 0) {
-      // \x1B[A moves cursor UP. We move up N-1 times to reach the first line we printed.
-      stdout.write('\x1B[${_lastLineCount - 1}A');
-    }
-
-    // 2. Overwrite each line
-    for (int i = 0; i < currentLines.length; i++) {
-      // \r moves to start of line, \x1B[2K clears the line to prevent "ghost" characters
-      stdout.write('\r\x1B[2K${currentLines[i]}');
-      if (i < currentLines.length - 1) {
-        stdout.write('\n');
-      }
-    }
-
-    // Update line count for the next call (handles terminal wrapping if lines split)
-    _lastLineCount = currentLines.length;
-  }
-
   @override
   void showProgress() {
+    if (isInitialising) return;
+
     final buffer = StringBuffer();
 
     // Line 1: Filename and Size
@@ -94,7 +78,7 @@ class SingleStreamDownloader extends Downloader {
     buffer.write("Controls: [p] Pause | [r] Resume | [c] Cancel");
 
     final output = buffer.toString();
-    _cleanLastLinesAndPrint(output);
+    logBuffer.cleanLastLinesAndPrint(output);
   }
 
   @override
@@ -107,6 +91,6 @@ class SingleStreamDownloader extends Downloader {
     );
 
     final output = buffer.toString();
-    _cleanLastLinesAndPrint(output);
+    logBuffer.cleanLastLinesAndPrint(output);
   }
 }

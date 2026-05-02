@@ -2,6 +2,7 @@
 import 'dart:io';
 
 import 'package:udm/helpers/extensions/int_extensions.dart';
+import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
 import 'package:udm/models/downloader_config.dart';
 import 'package:udm/models/metrics_models.dart';
 import 'package:udm/helpers/path_helpers/path_helpers.dart';
@@ -76,8 +77,15 @@ class HeaderInfo {
       "File: ${filename ?? 'Unknown'} | Size: ${fileSize.humanReadable} | Ranges: $acceptsRanges";
 }
 
-Future<HeaderInfo> sendHeadRequest(HttpClient client, Uri url) async {
+Future<HeaderInfo> sendHeadRequest(
+  HttpClient client,
+  Uri url, [
+  LogBuffer? logBuffer,
+]) async {
+  logBuffer ??= LogBuffer();
   try {
+    logBuffer.cleanLastLinesAndPrint("Sending head request to $url");
+
     // We use a GET request with a range of 0-0 if HEAD fails,
     // as some servers (like some AWS S3 configs) block HEAD requests.
     final request = await client.headUrl(url);
@@ -89,6 +97,10 @@ Future<HeaderInfo> sendHeadRequest(HttpClient client, Uri url) async {
     final response = await request.close();
 
     if (response.statusCode >= 400) {
+      logBuffer.writeWarning(
+        "Head request failed with status code ${response.statusCode}",
+      );
+
       // Fallback for servers that hate HEAD requests:
       // Try a GET but only ask for the first byte.
       return await _fallbackGetHeader(client, url);
@@ -96,13 +108,22 @@ Future<HeaderInfo> sendHeadRequest(HttpClient client, Uri url) async {
 
     return HeaderInfo.fromResponse(response, url);
   } catch (e) {
+    logBuffer.writeError("Caught error when sending normal head request:: $e");
     // If anything fails, try the fallback before giving up
     return await _fallbackGetHeader(client, url);
   }
 }
 
 /// Fallback using a partial GET request (0-0)
-Future<HeaderInfo> _fallbackGetHeader(HttpClient client, Uri url) async {
+Future<HeaderInfo> _fallbackGetHeader(
+  HttpClient client,
+  Uri url, [
+  LogBuffer? logBuffer,
+]) async {
+  logBuffer ??= LogBuffer();
+
+  logBuffer.writeInfo("Falling back to partial GET request");
+
   final request = await client.getUrl(url);
   request.headers.set(HttpHeaders.rangeHeader, 'bytes=0-0');
   request.followRedirects = true;
@@ -118,11 +139,16 @@ Future<HeaderInfo> _fallbackGetHeader(HttpClient client, Uri url) async {
     // Format: bytes 0-0/1234567
     final totalSize = int.tryParse(contentRange.split('/').last);
     if (totalSize != null) {
+      logBuffer.writeInfo("Got headers (Partial GET Request)");
       return HeaderInfo(
         filename: info.filename,
         fileSize: FileSize(totalSize),
         acceptsRanges: true, // If we got a content-range, it definitely supports it
         fileExtension: info.fileExtension,
+      );
+    } else {
+      logBuffer.writeWarning(
+        "Failed to parse content-range this wont support the parallel download",
       );
     }
   }

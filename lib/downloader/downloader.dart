@@ -1,82 +1,18 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:udm/downloader.dart';
 import 'package:udm/head_parser.dart';
 import 'package:udm/helpers/extensions/date_extensions.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
 import 'package:udm/models/downloader_config.dart';
 
-/// A mixin for controlling the log amount and level
-mixin LogControl {
-  bool get isTerminalConnected {
-    return stdin.hasTerminal;
-  }
-
-  bool get isVerboseMode;
-
-  void vlog(String message, [String? label]) {
-    if (!isVerboseMode) return;
-
-    if (label != null) {
-      print("[ $label ]: $message");
-    } else {
-      print(message);
-    }
-  }
-
-  void vlogError(String message, [String label = "ERROR"]) {
-    if (!isVerboseMode) return;
-
-    if (isTerminalConnected) {
-      TerminalHelper.logError(message, label);
-      return;
-    }
-
-    print("[ $label ]: $message");
-  }
-
-  void vlogSuccess(String message, [String? label]) {
-    if (!isVerboseMode) return;
-
-    if (isTerminalConnected) {
-      TerminalHelper.logSuccess(message, label);
-      return;
-    }
-
-    print("[ $label ]: $message");
-  }
-
-  void vlogInfo(String message, [String? label]) {
-    if (!isVerboseMode) return;
-
-    if (isTerminalConnected) {
-      TerminalHelper.logInfo(message, label);
-      return;
-    }
-
-    print("[ $label ]: $message");
-  }
-
-  void vlogWarning(String message, [String? label]) {
-    if (!isVerboseMode) return;
-
-    if (isTerminalConnected) {
-      TerminalHelper.logWarning(message, label);
-      return;
-    }
-
-    print("[ $label ]: $message");
-  }
-}
-
 /// A base class for the downloader
 /// the multiThreadDownloader and Single downloader should be the child classes of this clas
 
 /// The blueprint for all Downloader implementations.
 /// This handles the state management and provides a stream for progress updates.
-abstract class Downloader with LogControl {
+abstract class Downloader {
   final DownloaderConfig config;
 
   // State and progress Tracking
@@ -86,6 +22,9 @@ abstract class Downloader with LogControl {
     required this.config,
     this.timerInterval = const Duration(milliseconds: 300),
   });
+
+  /// a buffer to store the terminal buffer
+  final logBuffer = LogBuffer();
 
   /// The external API to listen for progress updates.
   Stream<DownloadStatus> get progressStream => status.stream;
@@ -97,7 +36,7 @@ abstract class Downloader with LogControl {
   bool get isCancelled => status.isCancelled;
   bool get isCompleted => status.isCompleted;
   bool get isDownloading => status.isDownloading;
-  bool get isInit => status.isInit;
+  bool get isInitialising => status.isInit;
 
   @override
   bool get isVerboseMode => config.verbose;
@@ -138,7 +77,16 @@ abstract class Downloader with LogControl {
 
   Future<void> init() async {
     await tryHeadRequest();
+
+    logBuffer.writeln(
+      "Headers fetched successfully\n"
+      "Filename: ${headerInfo?.filename}\n"
+      "File Size: ${headerInfo?.fileSize.humanReadable}\n"
+      "URL: ${config.url}",
+    );
+
     status = DownloadStatus(totalSize: headerInfo!.fileSize.bytes);
+
     await _prepareFile();
 
     _timer = Timer.periodic(timerInterval, (_) async {
@@ -163,13 +111,13 @@ abstract class Downloader with LogControl {
   Future<void> _prepareFile() async {
     final file = File(absolutePath);
     if (!await file.parent.exists()) {
+      logBuffer.writeln("Directory not found, creating directory");
       await file.parent.create(recursive: true);
     }
 
     if (headerInfo?.fileSize.bytes == -1) {
-      vlogError(
+      logBuffer.writeError(
         "Cannot prepare file: unknown file size {${headerInfo?.fileSize.bytes}}, trying to proceed",
-        "Downloader",
       );
       // we dont know the file size so we cant prepare but we wont stop
       // because the download can still go on
