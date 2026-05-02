@@ -33,7 +33,8 @@ class DownloaderConfig {
   ///
   /// it is optional but if provided then, ensure that the path is valid and you actually have write prrmisisons in that directory,
   /// otherwise it will throw an error when the downloader tries to save the file
-  late final String? _outputDir;
+  // Layer 1: Explicit User Input (Keep null if not provided)
+  String? _explicitOutputDir;
 
   /// the preferred filename that you want to use for the saved file,
   /// it is purely optional
@@ -41,7 +42,7 @@ class DownloaderConfig {
   ///
   /// If provided and the filename already exists then a unique suffix will automatically be added to the filename to avoid the overwritting issue of existing file
   ///
-  String? _preferredFilename;
+  String? _explicitFilename;
 
   /// This is for debugging purpose,
   /// if it is verbose then it will print the logs of the download process in the terminals std io, otherwise it will not print any logs
@@ -62,28 +63,44 @@ class DownloaderConfig {
   /// the getter for the filename
   ///
   /// it will return the resolved filename which is either from the user preference or from the header info or from the url
+  /// it can stay null in that  case the downloader determines either by the header or use default name
   String get filename {
-    String resolvedFileName =
-        _preferredFilename ??
+    // If user provided a name, use it.
+    // Otherwise check saved.
+    // Otherwise hard-coded.
+    return _explicitFilename ??
         _userPreference['preferredFilename'] ??
-        "Udm-downloaded-file";
-    return resolvedFileName;
+        "UDM-Downloaded-File";
   }
 
   /// the setter for the filename
   ///
   /// it will update the filename in the user preference
-  /// Note:: We must call to get a unique name using [p.getUniqueName] to ensure we dont overwrite existing file
-  set filename(String? filename) {
-    _preferredFilename = p.getUniqueName(p.join(outputDir, filename));
+  set filename(String? name) {
+    _explicitFilename = (name == null || name.isEmpty) ? null : name;
   }
 
-  String get absoluteFilename => p.join(outputDir, filename);
+  /// setter for output dir
+  set outputDir(String? dir) {
+    if (dir != null && dir.isNotEmpty) {
+      p.mkDirAll(dir);
+      _explicitOutputDir = dir;
+    }
+  }
 
-  String get outputDir =>
-      _outputDir ??
-      _userPreference['outputDir'] ??
-      p.join(p.getDownloadDir(), "udm", p.getFileType(filename));
+  /// Resolves the full path and ensures a unique name to avoid overwriting
+  String get absoluteFilename {
+    final baseDir = outputDir;
+    final name = filename;
+    // We calculate uniqueness at the moment the path is requested
+    return p.getUniqueName(p.join(baseDir, name));
+  }
+
+  String get outputDir {
+    return _explicitOutputDir ??
+        _userPreference['outputDir'] ??
+        p.getDownloadDir(); // Layer 3: Hard-coded Default
+  }
 
   DownloaderConfig({
     required String fileUrl,
@@ -102,15 +119,9 @@ class DownloaderConfig {
     url = Uri.parse(fileUrl);
     populateConfigs();
 
-    _outputDir = saveDir;
+    //Assign "User" Layer (this overrides the saved layer in getters)
+    this.outputDir = saveDir;
     this.filename = filename;
-
-    if (saveDir != null && saveDir.isNotEmpty) {
-      /// this auto throws in case of error
-      p.mkDirAll(saveDir);
-    }
-
-    _outputDir = saveDir;
   }
 
   /// finds the path to the config file

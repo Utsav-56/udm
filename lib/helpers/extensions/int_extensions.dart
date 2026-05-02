@@ -80,3 +80,54 @@ extension IntExtensions on int {
     });
   }
 }
+
+extension ReadableSpeedHelper on num {
+  String get humanReadableSpeed {
+    if (this >= 1.gb) {
+      return "${(this / 1.gb).toStringAsFixed(2)} GB/s";
+    } else if (this >= 1.mb) {
+      return "${(this / 1.mb).toStringAsFixed(2)} MB/s";
+    } else if (this >= 1.kb) {
+      return "${(this / 1.kb).toStringAsFixed(2)} KB/s";
+    } else {
+      return "${this.toStringAsFixed(2)} B/s";
+    }
+  }
+
+  String get asSuitableSizeUnit {
+    if (this >= 1.gb) {
+      return "${(this / 1.gb).toStringAsFixed(2)} GB";
+    } else if (this >= 1.mb) {
+      return "${(this / 1.mb).toStringAsFixed(2)} MB";
+    } else if (this >= 1.kb) {
+      return "${(this / 1.kb).toStringAsFixed(2)} KB";
+    } else {
+      return "${this.toStringAsFixed(2)} B";
+    }
+  }
+
+  /// gives a readable time unit such as "1s", "2m", "3h", "1d", "1w", "1mo", "1y"
+  /// Assumes that the int is in seconds
+  String get asReadableTimeUnit {
+    final totalSeconds = this;
+
+    if (totalSeconds <= 0) return "Done";
+
+    final days = totalSeconds ~/ 86400;
+    final hours = (totalSeconds % 86400) ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+
+    final parts = <String>[];
+
+    if (days > 0) parts.add('${days}d');
+    if (hours > 0) parts.add('${hours}h');
+    if (minutes > 0) parts.add('${minutes}m');
+    if (seconds > 0) parts.add('${seconds}s');
+
+    // limit to 2 most relevant units
+    final result = parts.take(2).join(' ');
+
+    return result.isEmpty ? "0s" : "$result left";
+  }
+}

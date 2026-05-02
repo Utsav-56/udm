@@ -59,3 +59,43 @@ extension NullableDateTimeX on DateTime? {
     return this!.formatted;
   }
 }
+
+extension DurationX on Duration {
+  String get readableFormat {
+    final seconds = inSeconds;
+    final minutes = inMinutes;
+    final hours = inHours;
+    final days = inDays;
+
+    // < 1 second → show ms
+    if (seconds < 1) {
+      return '${inMilliseconds}ms';
+    }
+
+    // < 1 minute → show seconds (+ leftover ms if small)
+    if (seconds < 60) {
+      final remMs = inMilliseconds % 1000;
+      if (remMs > 0) {
+        return '${seconds}s ${remMs}ms';
+      }
+      return '${seconds}s';
+    }
+
+    // < 1 hour → show minutes + seconds
+    if (minutes < 60) {
+      final remSec = seconds % 60;
+      return remSec > 0 ? '${minutes}m ${remSec}s' : '${minutes}m';
+    }
+
+    // < 1 day → show hours + minutes
+    if (hours < 24) {
+      final remMin = minutes % 60;
+      return remMin > 0 ? '${hours}h ${remMin}m' : '${hours}h';
+    }
+
+    // >= 1 day → show days + hours
+    final remHr = hours % 24;
+    return remHr > 0 ? '${days}d ${remHr}h' : '${days}d';
+  }
+}
+
