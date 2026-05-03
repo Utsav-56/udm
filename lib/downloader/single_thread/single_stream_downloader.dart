@@ -1,24 +1,38 @@
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
+
+/// Reliable single-stream download implementation.
+///
+/// This library provides the [SingleStreamDownloader] class, which fetches a file
+/// using a single persistent HTTP connection. It is the most compatible method
+/// for all types of servers.
+library;
+
 import 'dart:async';
 import 'dart:io';
 
 import 'package:udm/downloader/downloader.dart';
 import 'package:udm/downloader/head_parser.dart';
-import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
-import 'package:udm/downloader/models/downloader_config.dart';
 
-/// A single stream download class
-/// it extends the downloader class and implements the start method
-
-/// Implementation of [Downloader] that uses a single persistent stream to fetch data.
+/// A downloader that uses a single HTTP stream to fetch data.
 ///
-/// **Why**: Acts as a reliable fallback for servers that do not support HTTP range
-/// requests or for environments where multi-connection limits are enforced.
-/// **How**: Extends [Downloader] and processes a single HTTP response stream.
+/// [SingleStreamDownloader] acts as a reliable fallback for servers that do
+/// not support HTTP Range requests or in constrained network environments
+/// where multiple concurrent connections are restricted.
+///
+/// **Usage**:
+/// ```dart
+/// final downloader = SingleStreamDownloader(url: 'https://example.com/file.zip');
+/// await downloader.start();
+/// ```
 class SingleStreamDownloader extends Downloader {
-  SingleStreamDownloader({required super.url, DownloaderConfig? config})
-    : super(config: config);
+  /// Creates a [SingleStreamDownloader] for the given [url].
+  SingleStreamDownloader({required super.url, super.config});
 
-  // We can reuse the same client in the single stream so we create a shared client instance
+  /// Shared HTTP client for the single stream request.
   final HttpClient _client = HttpClient()
     ..maxConnectionsPerHost = 3
     ..connectionTimeout = const Duration(seconds: 10)
@@ -107,7 +121,7 @@ class SingleStreamDownloader extends Downloader {
   void showFinalProgress() {
     StringBuffer buffer = StringBuffer();
 
-    buffer.writeln("Downloaded: $filename (${absolutePath})");
+    buffer.writeln("Downloaded: $filename ($absolutePath)");
     buffer.writeln(
       "Time Taken: ${status.timeTaken} || Average Speed: ${status.averageSpeedText}",
     );

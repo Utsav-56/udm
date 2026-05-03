@@ -1,4 +1,20 @@
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
+
+/// Utility extensions for [DateTime] and [Duration].
+///
+/// This library provides formatting methods to convert dates and durations
+/// into human-readable strings, optimized for logs and UI displays.
+library;
+
 extension DateTimeX on DateTime {
+  /// Returns a human-readable representation of the difference between [this] and [other].
+  ///
+  /// Automatically scales the output unit (ms, s, m, h, d) based on the magnitude
+  /// of the difference.
   String readableDifference(DateTime other) {
     final diff = difference(other).abs();
 
@@ -39,6 +55,7 @@ extension DateTimeX on DateTime {
     return remHr > 0 ? '${days}d ${remHr}h' : '${days}d';
   }
 
+  /// Formats the time as a 12-hour string with AM/PM (e.g., "10:30 AM").
   String get formatted {
     final hour12 = hour % 12 == 0 ? 12 : hour % 12;
     final period = hour >= 12 ? 'PM' : 'AM';
@@ -49,11 +66,13 @@ extension DateTimeX on DateTime {
 }
 
 extension NullableDateTimeX on DateTime? {
+  /// Safe version of [readableDifference] that returns "N/A" if either date is null.
   String readableDifference(DateTime? other) {
     if (this == null || other == null) return "N/A";
     return this!.readableDifference(other);
   }
 
+  /// Safe version of [formatted] that returns "N/A" if the date is null.
   String get formatted {
     if (this == null) return "N/A";
     return this!.formatted;
@@ -61,6 +80,9 @@ extension NullableDateTimeX on DateTime? {
 }
 
 extension DurationX on Duration {
+  /// Formats the duration into a concise, human-readable string.
+  ///
+  /// Example outputs: "5s 200ms", "10m 30s", "1d 5h".
   String get readableFormat {
     final seconds = inSeconds;
     final minutes = inMinutes;

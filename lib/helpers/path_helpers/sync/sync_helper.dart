@@ -1,10 +1,26 @@
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
+
+/// Synchronous filesystem utilities and path manipulation.
+///
+/// This library provides the [PathHelper] mixin, which encapsulates blocking
+/// filesystem operations such as file creation, deletion, renaming, and metadata
+/// retrieval. It also includes a comprehensive mapping of file extensions to
+/// logical categories.
+library;
+
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:path/path.dart' as pth;
 import 'package:udm/helpers/extensions/string_extension.dart';
 
-/// constants for the file types
+/// Map of file categories to their common extensions.
+///
+/// Used for categorizing downloads into "Documents", "Images", "Videos", etc.
 const Map<String, List<String>> fileTypes = {
   "Documents": [
     ".pdf",
@@ -62,14 +78,20 @@ const Map<String, List<String>> fileTypes = {
   ],
 };
 
-/// A mixin containing synchronous file system path manipulation and operations.
+/// A mixin providing a comprehensive suite of synchronous filesystem operations.
+///
+/// [PathHelper] simplifies working with the [dart:io] and [path] packages by
+/// providing a unified, high-level API for common tasks like joining paths,
+/// checking existence, and performing file/directory CRUD operations.
 mixin PathHelper {
   void _handleError(Object e, String method) {
     print("Error in $method: $e");
     throw e;
   }
 
-  /// Joins multiple path parts into a single path.
+  /// Joins up to six path parts into a single platform-specific path.
+  ///
+  /// Example: `join('home', 'user', 'downloads')` -> `'home/user/downloads'` (POSIX).
   String join(
     String part1, [
     String? part2,
@@ -87,8 +109,9 @@ mixin PathHelper {
     return res;
   }
 
-  /// this is a unique helper which returns null if the given path join does not results in a existing path
-  /// otherwise returns the joined path
+  /// Joins path parts and returns the result ONLY if it exists on the filesystem.
+  ///
+  /// Returns `null` if the joined path does not exist.
   String? joinExisting(
     String path1, [
     String? part2,
@@ -144,7 +167,7 @@ mixin PathHelper {
   /// Checks if two paths refer to the same location.
   bool isSame(String path1, String path2) => pth.equals(path1, path2);
 
-  /// Checks if `path2` is inside `path1`.
+  /// Returns `true` if [path2] is a child or nested descendant of [path1].
   bool isInsideSameDir(String path1, String path2) {
     final p1 = pth.normalize(path1);
     final p2 = pth.normalize(path2);
@@ -184,7 +207,9 @@ mixin PathHelper {
     }
   }
 
-  /// returns the type of file based on the extension of the file
+  /// Categorizes a [filename] based on its extension into groups like "Images" or "Videos".
+  ///
+  /// Returns an empty string if the extension is unknown.
   String getFileType(String filename) {
     final ext = extension(filename);
     for (final type in fileTypes.entries) {
@@ -197,14 +222,16 @@ mixin PathHelper {
     return "";
   }
 
-  /// Returns the user home dir of the current platform system
-  /// it relies on the Environment variables (userprofile on Windows,
-  /// HOME on Linux and macOS)
+  /// Returns the current user's home directory path.
+  ///
+  /// Resolves using `userprofile` (Windows) or `HOME` (POSIX) environment variables.
   String getHomeDir() =>
       Platform.environment['userprofile'] ?? Platform.environment['HOME'] ?? "";
 
-  /// Returns users download dir.
-  /// Returns the Downloads Directory with validation
+  /// Returns the path to the user's Downloads directory.
+  ///
+  /// Handles platform-specific locations and respects the `XDG_DOWNLOAD_DIR`
+  /// environment variable on Linux.
   String getDownloadDir() {
     String path;
     String home = getHomeDir();
@@ -220,7 +247,7 @@ mixin PathHelper {
     return path;
   }
 
-  /// Returns the Documents Directory
+  /// Returns the path to the user's Documents directory.
   String getDocumentsDir() {
     String path;
     String home = getHomeDir();
@@ -300,7 +327,7 @@ mixin PathHelper {
     }
   }
 
-  /// Alias for `extension` to get the file extension.
+  /// Returns the extension of the file at the given [path].
   String getFileExtension(String path) => pth.extension(path);
 
   // --- CRUD operations on files and directories ---
@@ -679,6 +706,9 @@ mixin PathHelper {
     }
   }
 
+  /// Reads the entire contents of a file as a string.
+  ///
+  /// Returns `null` if the file does not exist or an error occurs.
   String? readAsString(String path) {
     try {
       final file = File(path);

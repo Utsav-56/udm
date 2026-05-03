@@ -1,11 +1,25 @@
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
+
+/// Asynchronous filesystem utilities and path manipulation.
+///
+/// This library provides the [PathHelperAsync] mixin, which encapsulates
+/// non-blocking filesystem operations. It is designed to be used in
+/// performance-critical sections to avoid blocking the event loop.
+library;
+
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:path/path.dart' as pth;
 
-/// A mixin containing asynchronous file system path manipulation and operations.
+/// A mixin providing a comprehensive suite of asynchronous filesystem operations.
 ///
-/// These methods are asynchronous counterparts to [PathHelper] methods.
+/// [PathHelperAsync] contains asynchronous counterparts to [PathHelper] methods,
+/// utilizing [Stream]s and [Future]s to handle I/O without stalling execution.
 mixin PathHelperAsync {
   void _handleError(Object e, String method) {
     print("Error in $method: $e");
@@ -130,7 +144,7 @@ mixin PathHelperAsync {
     }
   }
 
-  /// Reads and returns the contents of a file as a string asynchronously.
+  /// Reads the entire contents of a file as a string asynchronously.
   ///
   /// Returns `null` if the file does not exist or an error occurs.
   Future<String?> getFileContentsAsync(String path) async {

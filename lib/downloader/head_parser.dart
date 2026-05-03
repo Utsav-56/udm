@@ -1,28 +1,52 @@
-// demo url for testing
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
+
+/// Utility for parsing HTTP headers and retrieving remote file metadata.
+///
+/// This library provides tools to extract filenames, file sizes, and range
+/// support from HTTP responses, enabling intelligent download strategy selection.
+library;
+
 import 'dart:io';
 
 import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
 import 'package:udm/helpers/path_helpers/path_helpers.dart';
 import 'package:udm/models/file_size.dart';
 
-const demoUrl =
-    "https://drive.usercontent.google.com/download?id=1-hPM0AsfHY-8ZiiTx29PJoGEvz6tch7f&export=download&authuser=0&confirm=t&uuid=75bf507f-49fc-4d7c-bfe5-b6f0450aad20&at=ALBwUgkGsQqVRFNRfVS04eSsw_Uv:1777789454035";
-
 /// Metadata container for remote file information retrieved via HTTP headers.
 ///
-/// **Why**: Essential for determining if a download can be multi-threaded and for
-/// allocating disk space before the download begins.
-/// **How**: Generated via [sendHeadRequest] before initializing a [Downloader].
+/// [HeaderInfo] is essential for determining if a download can be multi-threaded
+/// (via [supportsMultiStream]) and for pre-allocating disk space before the
+/// download begins.
+///
+/// It is typically generated via [sendHeadRequest] during the initialization
+/// phase of a [Downloader].
 class HeaderInfo {
-  /// The minimum size required to bother with multi-threading (default 5MB)
+  /// The minimum file size (in bytes) required to justify a multi-threaded download.
+  ///
+  /// Defaults to 5MB. Files smaller than this threshold are usually faster to
+  /// download using a single stream due to isolate spawning overhead.
   static const int minMultiStreamThreshold = 5 * 1024 * 1024;
 
+  /// The suggested filename extracted from the `Content-Disposition` header.
   final String? filename;
+
+  /// The total size of the remote file.
   final FileSize fileSize;
+
+  /// Indicates whether the server supports HTTP Range requests.
   final bool acceptsRanges;
+
+  /// The file extension derived from the filename or the URL path.
   final String? fileExtension;
+
+  /// The MIME type of the remote file as reported by the `Content-Type` header.
   final String? contentType;
 
+  /// Creates a [HeaderInfo] instance with explicit metadata values.
   const HeaderInfo({
     this.filename,
     required this.fileSize,
@@ -31,10 +55,17 @@ class HeaderInfo {
     this.contentType,
   });
 
-  /// Reliable check for multi-stream support
+  /// Returns `true` if the remote server and file properties support multi-threaded downloading.
+  ///
+  /// Requires [acceptsRanges] to be true, a known [fileSize], and the size to be
+  /// greater than or equal to [minMultiStreamThreshold].
   bool get supportsMultiStream =>
       acceptsRanges && fileSize.bytes != -1 && fileSize.bytes >= minMultiStreamThreshold;
 
+  /// Factory constructor that parses [HeaderInfo] from an [HttpClientResponse].
+  ///
+  /// Extracts filename using regex from `Content-Disposition`, determines file size
+  /// from `Content-Length`, and checks `Accept-Ranges` for multi-stream capability.
   factory HeaderInfo.fromResponse(HttpClientResponse response, Uri requestUri) {
     final headers = response.headers;
 
@@ -45,7 +76,7 @@ class HeaderInfo {
     if (contentDisposition != null) {
       final regExp = RegExp(
         r'filename[^;=\n]*=((["'
-        '])(.*)\2|([^;\n]*))',
+        '])(.*)2|([^;\n]*))',
       );
       final match = regExp.firstMatch(contentDisposition);
       parsedFilename = match?.group(3) ?? match?.group(4);
@@ -80,11 +111,22 @@ class HeaderInfo {
       "File: ${filename ?? 'Unknown'} | Size: ${fileSize.humanReadable} | Ranges: $acceptsRanges";
 }
 
-/// Performs an HTTP HEAD request (with fallback to GET) to retrieve file metadata.
+/// Performs an HTTP HEAD request to retrieve file metadata, with an automatic fallback to GET.
 ///
-/// **Why**: Standard HEAD requests are often blocked by CDNs or WAFs. This function
-/// intelligently falls back to a range-limited GET request to guarantee metadata retrieval.
-/// **How**: [client] and [logBuffer] are optional. If [client] is null, a temporary one is created and closed.
+/// **Rationale**: Standard HEAD requests are frequently blocked or restricted by
+/// CDNs, WAFs, or cloud storage providers (e.g., AWS S3). If the HEAD request
+/// fails (status >= 400 or exception), this function performs a range-limited
+/// GET request (bytes 0-0) to extract the same metadata safely.
+///
+/// **Parameters**:
+/// - [url]: The target resource URI.
+/// - [client]: An optional [HttpClient]. If null, a temporary client is created
+///   and disposed automatically.
+/// - [logBuffer]: An optional [LogBuffer] for tracking the request process.
+///
+/// **Throws**:
+/// - [SocketException] if the server is unreachable.
+/// - [HttpException] if the fallback GET request also fails.
 Future<HeaderInfo> sendHeadRequest(
   Uri url, [
   HttpClient? client,
@@ -145,7 +187,10 @@ Future<HeaderInfo> sendHeadRequest(
   }
 }
 
-/// Fallback using a partial GET request (0-0)
+/// Performs a partial GET request to retrieve headers when HEAD is blocked.
+///
+/// Requests only the first byte (`bytes=0-0`) and parses the `Content-Range`
+/// header to determine the actual total file size.
 Future<HeaderInfo> _fallbackGetHeader(
   Uri url,
   HttpClient client, [

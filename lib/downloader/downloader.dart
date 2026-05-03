@@ -1,3 +1,16 @@
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
+
+/// Core downloader abstractions and base implementation for the UDM (Universal Download Manager).
+///
+/// This library defines the [Downloader] base class which provides the skeletal
+/// framework for implementing various download strategies, such as single-threaded
+/// and multi-threaded downloads.
+library;
+
 import 'dart:async';
 import 'dart:io';
 
@@ -7,51 +20,90 @@ import 'package:udm/helpers/path_helpers/path_helpers.dart';
 import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
 import 'package:udm/downloader/models/downloader_config.dart';
 
-/// EXPORTS FOR THIS LIBRARY MODULE;
 export './models/download_status.dart';
 export 'multi_thread/multi_stream_downloader.dart';
 export './single_thread/single_stream_downloader.dart';
 
-/// A base class for the downloader
-/// the multiThreadDownloader and Single downloader should be the child classes of this clas
-
-/// The blueprint for all Downloader implementations.
+/// The blueprint for all Downloader implementations in the UDM ecosystem.
 ///
-/// **Why**: Provides a unified interface for both [SingleStreamDownloader] and [MultiStreamDownloader].
-/// **How**: Extend this class and implement [start] and [timerFunction].
+/// This abstract class establishes a unified interface for managing download
+/// lifecycles, progress tracking, and resource cleanup. It handles common
+/// concerns such as filename resolution based on server headers, disk space
+/// allocation, and periodic status synchronization.
+///
+/// **Usage**:
+/// Concrete implementations (like [MultiStreamDownloader] or [SingleStreamDownloader])
+/// must implement the [start], [tryHeadRequest], and [timerFunction] methods.
+///
+/// ```dart
+/// final downloader = MyDownloader(url: 'https://example.com/file.zip');
+/// await downloader.init();
+/// await downloader.start();
+/// ```
 abstract class Downloader {
+  /// Configuration settings for this downloader instance.
+  ///
+  /// Includes options for output directory, naming preferences, and UI behavior.
   late final DownloaderConfig config;
 
   // State and progress Tracking
+  /// Current state and progress metrics of the download.
+  ///
+  /// Tracks bytes downloaded, speed, estimated time remaining, and status flags.
   late final DownloadStatus status;
 
+  /// The remote URL of the file to be downloaded.
   late final Uri url;
 
+  /// Creates a new [Downloader] instance for the given [url].
+  ///
+  /// Optional [config] can be provided to customize download behavior. If omitted,
+  /// [DownloaderConfig.defaultInstance] is used.
   Downloader({required String url, DownloaderConfig? config}) {
     this.url = Uri.parse(url);
     this.config = config ?? DownloaderConfig.defaultInstance;
     logBuffer = LogBuffer(showProgressInTerminal: this.config.showProgressInTerminal);
   }
 
-  /// a buffer to store the terminal buffer
+  /// A buffer used to manage and display terminal logs and progress.
   late final LogBuffer logBuffer;
 
-  /// The external API to listen for progress updates.
+  /// A stream that emits [DownloadStatus] updates during the download process.
   Stream<DownloadStatus> get progressStream => status.stream;
   Timer? _timer;
 
-  /// the timer interval is derived from the [DownloaderConfig.progressSyncInterval]
+  /// The interval at which progress is synchronized and [timerFunction] is called.
+  ///
+  /// Derived from [DownloaderConfig.progressSyncInterval].
   Duration get timerInterval => Duration(milliseconds: config.progressSyncInterval);
 
+  /// Returns `true` if the download is currently paused.
   bool get isPaused => status.isPaused;
+
+  /// Returns `true` if the download has been cancelled.
   bool get isCancelled => status.isCancelled;
+
+  /// Returns `true` if the download has completed successfully.
   bool get isCompleted => status.isCompleted;
+
+  /// Returns `true` if the download is actively in progress.
   bool get isDownloading => status.isDownloading;
+
+  /// Returns `true` if the downloader is in the initialization phase.
   bool get isInitialising => status.isInitialising;
 
-  // save path helpers
+  /// Information retrieved from the server headers.
+  ///
+  /// Contains details such as file size, filename, and range support.
   HeaderInfo? _headerInfo;
+
+  /// Getter for the current [HeaderInfo].
   HeaderInfo? get headerInfo => _headerInfo;
+
+  /// Sets the [HeaderInfo] and resolves the final filename.
+  ///
+  /// This logic handles merging user-preferred filenames with server-suggested
+  /// extensions and ensures naming consistency.
   set headerInfo(HeaderInfo info) {
     _headerInfo = info;
 
@@ -84,36 +136,60 @@ abstract class Downloader {
     }
   }
 
-  String get filename => config.filename!;
+  /// The resolved filename used for saving the download.
+  String get filename => config.filename;
+
+  /// The absolute file system path where the file will be saved.
   String get absolutePath => config.absoluteFilename;
+
+  /// The total size of the file in bytes, as reported by the server.
+  ///
+  /// Returns 0 if header info is not yet available.
   int get fileSize => headerInfo?.fileSize.bytes ?? 0;
 
   final Completer<void> _initCompleter = Completer<void>();
 
-  // file handler
+  /// The underlying [RandomAccessFile] used for disk operations.
+  ///
+  /// Throws a [StateError] if accessed before initialization.
   RandomAccessFile? _raf;
   RandomAccessFile get raf => _raf!;
 
-  /// Starts the download process.
+  /// Orchestrates the download start logic.
+  ///
+  /// Implementation varies between single-stream and multi-stream downloaders.
   Future<void> start();
 
-  /// Pauses the current data stream.
+  /// Pauses the download by signaling the underlying data streams.
   void pause() => status.markPaused();
+
+  /// Resumes a previously paused download.
   void resume() => status.markResumed();
 
-  /// Cancels the download and triggers cleanup.
+  /// Cancels the download and triggers resource cleanup.
+  ///
+  /// This will stop all active streams, close file handles, and may delete
+  /// partially downloaded files depending on the implementation.
   Future<void> cancel() async {
     status.markCancelled();
     await cleanup();
   }
 
+  /// Fetches metadata from the server using a HEAD (or fallback GET) request.
   Future<void> tryHeadRequest();
 
-  /// must be implemented
-  /// this will fire every timerInterval
-  /// used for printing log, or anything you want
+  /// Hook that executes periodically based on [timerInterval].
+  ///
+  /// Concrete classes should use this to update UI, log progress, or perform
+  /// health checks.
   Future<void> timerFunction(Timer timer);
 
+  /// Initializes the downloader by fetching headers and preparing the local file.
+  ///
+  /// This method must be called before [start]. It sets up the [status],
+  /// [logBuffer], and disk allocation.
+  ///
+  /// Throws an exception if head request fails or file cannot be created.
   Future<void> init() async {
     await tryHeadRequest();
 
@@ -133,10 +209,15 @@ abstract class Downloader {
     _initCompleter.complete();
   }
 
+  /// Displays the final status of the download.
   void showFinalProgress();
 
-  /// Allocates space on the disk before downloading starts.
-  /// This ensures we don't run out of space halfway through.
+  /// Allocates space on the disk and opens the file for writing.
+  ///
+  /// This pre-allocation prevents "Disk Full" errors during active downloading
+  /// and ensures the file structure is ready for parallel writes in multi-stream mode.
+  ///
+  /// If the file size is unknown, it skips truncation but still opens the file.
   Future<void> _prepareFile() async {
     final file = File(absolutePath);
     if (!await file.parent.exists()) {
@@ -159,12 +240,16 @@ abstract class Downloader {
     await _raf!.truncate(headerInfo!.fileSize.bytes);
   }
 
-  /// Logic to delete partial files or close ports upon cancellation.
+  /// Releases resources used by the downloader.
+  ///
+  /// Closes the [RandomAccessFile], disposes the [status] stream, and cancels
+  /// the internal timer.
   Future<void> cleanup() async {
     await _raf?.close();
     await status.dispose();
     _timer?.cancel();
   }
 
+  /// Updates the progress display (usually in the terminal).
   void showProgress();
 }

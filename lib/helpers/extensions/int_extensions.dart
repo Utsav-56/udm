@@ -1,5 +1,3 @@
-import 'package:udm/helpers/extensions/map_extension.dart';
-import 'package:udm/downloader/models/downloader_config.dart';
 import 'package:udm/models/file_size.dart';
 import 'package:udm/models/range.dart';
 
@@ -45,7 +43,7 @@ extension ReadableSpeedHelper on num {
     } else if (this >= 1.askb) {
       return "${(this / 1.askb).toStringAsFixed(2)} KB/s";
     } else {
-      return "${this.toStringAsFixed(2)} B/s";
+      return "${toStringAsFixed(2)} B/s";
     }
   }
 
@@ -57,7 +55,7 @@ extension ReadableSpeedHelper on num {
     } else if (this >= 1.askb) {
       return "${(this / 1.askb).toStringAsFixed(2)} KB";
     } else {
-      return "${this.toStringAsFixed(2)} B";
+      return "${toStringAsFixed(2)} B";
     }
   }
 

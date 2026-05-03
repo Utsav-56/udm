@@ -1,37 +1,69 @@
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
+
+/// High-performance multi-threaded download implementation.
+///
+/// This library provides the [MultiStreamDownload] class, which utilizes multiple
+/// concurrent HTTP connections and worker isolates to maximize download speeds.
+library;
+
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math';
 
 import 'package:udm/downloader/downloader.dart';
-import 'package:udm/downloader/models/download_status.dart';
 import 'package:udm/downloader/models/messenger.dart';
 import 'package:udm/downloader/models/worker_chunk.dart';
 import 'package:udm/downloader/head_parser.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/models/range.dart';
 
-/// Implementation of [Downloader] that uses multiple concurrent streams to fetch data.
+/// A downloader that splits a file into multiple chunks and fetches them concurrently.
 ///
-/// **Why**: Significantly increases download speeds by bypassing single-connection limits
-/// and utilizing the full available bandwidth across multiple TCP connections.
-/// **How**: Spawns multiple isolates ([downloadWorker]) and coordinates their progress.
+/// [MultiStreamDownload] coordinates several worker isolates, each responsible
+/// for a specific byte range of the file. It aggregates progress from all
+/// workers to provide a unified [status] update.
+///
+/// **Usage**:
+/// ```dart
+/// final downloader = MultiStreamDownload(url: 'https://example.com/largefile.iso');
+/// await downloader.start();
+/// ```
 class MultiStreamDownload extends Downloader {
-  MultiStreamDownload({required super.url, super.config});
+  /// Creates a [MultiStreamDownload] instance for the given [url].
+  MultiStreamDownload({required super.url, super.config}) {
+    threadCounnt = config.threadCount ?? 8;
+  }
 
-  int threadCounnt = 8; // for now we hardcode this in future we use preference
+  /// Number of concurrent worker threads to spawn.
+  late final int threadCounnt;
 
-  // to keep track of isolates so that we can kill them when needed
+  /// Active worker isolates indexed by their chunk ID.
   final WorkerMap<Isolate> _workers = {};
+
+  /// Port for receiving messages from worker isolates.
   final ReceivePort _receivePort = ReceivePort();
 
+  /// Byte ranges assigned to each worker.
   final List<Range> _workerRanges = [];
+
+  /// Task configuration for each worker.
   final WorkerMap<WorkerChunk> _workerChunks = {};
+
+  /// Progress monitors for each worker stream.
   final WorkerMap<DownloadStatus> _workerStatuses = {};
+
+  /// Communication ports to send signals to workers.
   final WorkerMap<SendPort> _workerSendPorts = {};
 
+  /// Set of worker indexes that have successfully completed their tasks.
   final Set<int> _finishedWorkerIndexes = {};
 
+  /// Initializes worker ranges, chunks, and status trackers based on [threadCounnt].
   void _initWorkers() {
     _workerRanges.clear();
     _workerChunks.clear();
@@ -59,12 +91,14 @@ class MultiStreamDownload extends Downloader {
     headerInfo = await sendHeadRequest(url, null, logBuffer);
   }
 
-  // isolate only sends error message and progress message and a handshake
+  /// Routes and handles messages received from worker isolates.
+  ///
+  /// Processes progress updates, error reports, and connection handshakes.
   void _handleMessage(dynamic message) {
     final data = WorkerMessage.parseFromData(message);
 
     if (data is ProgressMessage) {
-      final msg = data as ProgressMessage;
+      final msg = data;
       final index = msg.index;
 
       try {
@@ -76,8 +110,9 @@ class MultiStreamDownload extends Downloader {
         logBuffer.writeError("Error: $e");
       }
     } else if (data is ErrorMessage) {
+      // TODO: Implement centralized error handling and retry orchestration
     } else if (data is HandshakeMessage) {
-      final msg = data as HandshakeMessage;
+      final msg = data;
       final index = msg.index;
       final port = msg.sendPort;
 
@@ -85,22 +120,23 @@ class MultiStreamDownload extends Downloader {
     }
   }
 
+  /// Subscribes to the internal [ReceivePort] to process worker messages.
   void startListeningOnRecievePort() {
     _receivePort.listen(_handleMessage);
   }
 
   @override
   Future<void> timerFunction(Timer timer) async {
-    final _statuses = _workerStatuses.values.toList();
+    final statuses = _workerStatuses.values.toList();
 
-    _statuses.tickAll(timerInterval);
+    statuses.tickAll(timerInterval);
 
     int currentTotal = 0;
-    for (var workerStatus in _statuses) {
+    for (var workerStatus in statuses) {
       currentTotal += workerStatus.totalBytesDownloaded;
     }
 
-    this.status.totalBytesDownloaded = currentTotal;
+    status.totalBytesDownloaded = currentTotal;
 
     status.timerTick(timerInterval);
 
@@ -131,7 +167,7 @@ class MultiStreamDownload extends Downloader {
   void showFinalProgress() {
     StringBuffer buffer = StringBuffer();
 
-    buffer.writeln("Downloaded: $filename (${absolutePath})");
+    buffer.writeln("Downloaded: $filename ($absolutePath)");
     buffer.writeln(
       "Time Taken: ${status.timeTaken} || Average Speed: ${status.averageSpeedText}",
     );
@@ -153,7 +189,7 @@ class MultiStreamDownload extends Downloader {
     // Using status.showProgress() or makeProgressBar()
     buffer.writeln(status.makeProgressBar());
 
-    if (!_finishedWorkerIndexes.isEmpty) {
+    if (_finishedWorkerIndexes.isNotEmpty) {
       buffer.writeln("Finished Threads: ${_finishedWorkerIndexes.toList()..sort()}");
     }
 
@@ -187,11 +223,18 @@ class MultiStreamDownload extends Downloader {
   }
 }
 
+/// Callback container for [ChunkDownloader] events.
 class ChunkCallbacks {
+  /// Executed when the chunk download progress is updated.
   late final void Function(DownloadStatus) onProgress;
+
+  /// Executed when the chunk download completes successfully.
   late final void Function() onCompleted;
+
+  /// Executed when a recoverable or fatal error occurs during chunk download.
   late final void Function(Object error, Range newRange) onError;
 
+  /// Creates a [ChunkCallbacks] instance with the provided event handlers.
   ChunkCallbacks({
     required this.onProgress,
     required this.onCompleted,
@@ -199,20 +242,30 @@ class ChunkCallbacks {
   });
 }
 
-/// Orchestrates the download of a specific file range.
+/// Orchestrates the download of a specific file range within a worker isolate.
 ///
-/// **Why**: Encapsulates the logic for HTTP requests, file I/O, and retry mechanisms
-/// for a single thread/chunk, keeping [MultiStreamDownload] focused on coordination.
-/// **How**: Managed by a [downloadWorker] isolate.
+/// [ChunkDownloader] handles the HTTP Range request, manages local file I/O
+/// for the chunk, and implements retry logic with exponential backoff.
 class ChunkDownloader {
+  /// The task configuration for this chunk.
   final WorkerChunk worker;
+
+  /// The HTTP client used for fetching data.
   final HttpClient client;
+
+  /// Local progress tracker for this specific chunk.
   final DownloadStatus status;
+
+  /// Event callbacks for reporting progress and errors back to the isolate controller.
   final ChunkCallbacks callbacks;
 
+  /// Whether to automatically retry the download on network failures.
   final bool shouldRetryOnError;
+
+  /// Maximum number of retry attempts before reporting a fatal error.
   final int maxRetryCount;
 
+  /// Creates a [ChunkDownloader] instance.
   ChunkDownloader(
     this.worker,
     this.client,
@@ -222,6 +275,12 @@ class ChunkDownloader {
     DownloadStatus? status,
   }) : status = status ?? DownloadStatus(totalSize: worker.size, id: worker.index);
 
+  /// Starts the chunk download process with retry logic.
+  ///
+  /// Performs an HTTP GET with a Range header, writes chunks to the resolved
+  /// [RandomAccessFile], and triggers callbacks for progress and completion.
+  ///
+  /// Throws an exception if the server does not support partial content.
   Future<void> start() async {
     int attempts = 0;
     Range currentRange = worker.range;
@@ -288,12 +347,12 @@ class ChunkDownloader {
   }
 }
 
-/// the download worker isolate entry point
-/// The entry point for a dedicated download isolate.
+/// The dedicated entry point for a worker isolate.
 ///
-/// **Why**: Offloads the computationally expensive network and file I/O operations
-/// from the main UI/CLI thread to prevent interface lagging.
-/// **How**: Spawned via [Isolate.spawn] with a [WorkerChunk] configuration.
+/// This function initializes the [WorkerMessenger], establishes a handshake with
+/// the main isolate, and starts a [ChunkDownloader] to fetch the assigned byte range.
+/// It offloads I/O and network operations to a separate thread to ensure main
+/// isolate responsiveness.
 Future<void> downloadWorker(WorkerChunk worker) async {
   final client = HttpClient();
 

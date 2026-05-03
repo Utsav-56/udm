@@ -1,42 +1,51 @@
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
+
+/// Persistence framework for configuration and state objects.
+///
+/// This library provides interfaces and base classes for objects that can be
+/// serialized to JSON and persisted to the local filesystem.
+library;
+
 import 'dart:convert';
 
 import 'package:udm/helpers/path_helpers/path_helpers.dart';
 
-/// Interface for all the savable objects
+/// Interface for objects that can be serialized to and from JSON.
 ///
-/// the type T will be the type of the object that will be saved
+/// [Savable] ensures that an object of type [T] can be converted to a [Map]
+/// and reconstructed using a factory or reconstruction method.
 abstract interface class Savable<T> {
+  /// Converts the object into a JSON-compatible Map.
   Map<String, dynamic> toJson();
+
+  /// Converts the object into a JSON-formatted string.
   String tojsonString() {
     return json.encode(toJson());
   }
 
+  /// Reconstructs an object of type [T] from a JSON [Map].
   T fromJson(Map<String, dynamic> json);
 }
 
-/// Base class for all the saveable configurations
+/// Base class for managing persistent configurations.
 ///
-/// the type T will be the type of the config
-///
-/// it saves the config into a json format
-/// the T must  implement the [Savable] interface with method of [toJson] and [fromJson]
-/// the [toJson] will be used to save the config
-/// the [fromJson] will be used to load the config
+/// [SaveableConfig] provides the logic for loading and saving a [Savable] object
+/// [T] to a specific file path. It handles file existence checks and error
+/// recovery by returning a [defaultValue] when necessary.
 abstract class SaveableConfig<T extends Savable> {
-  /// the path to the file where the config will be saved
-  /// this should be the full path and absolute is recommended
+  /// The absolute filesystem path where the configuration is stored.
   String get configFilePath;
 
-  /// a default config must  always be provided in case there is no config file found
-  ///
-  /// if config is found then the found config is returned
-  ///
+  /// The fallback configuration used if no saved file exists or if loading fails.
   T get defaultValue;
 
-  /// this is the default implementation of the load method
-  /// it will load the config from the file
-  /// it will use the [fromJson] method to load the config
-  /// if the file is not found then it will return the default config
+  /// Loads and reconstructs the configuration from the [configFilePath].
+  ///
+  /// Returns [defaultValue] if the file does not exist or contains invalid data.
   T load() {
     if (!p.exists(configFilePath)) {
       return defaultValue;
@@ -51,6 +60,9 @@ abstract class SaveableConfig<T extends Savable> {
     return defaultValue.fromJson(parsedJson);
   }
 
+  /// Reads the raw JSON map from the saved configuration file.
+  ///
+  /// Returns an empty Map if the file does not exist or is unreadable.
   Map<String, dynamic> readSavedConfig() {
     try {
       if (!p.exists(configFilePath)) {
@@ -69,10 +81,9 @@ abstract class SaveableConfig<T extends Savable> {
     }
   }
 
-  /// this is the default implementation of the save method
-  /// it will save the config to the file
-  /// it will use the [toJson] method to save the config
-  /// if the file is not found then it will create the file
+  /// Persists the given [config] to the [configFilePath].
+  ///
+  /// Creates the file and parent directories if they do not exist.
   void save(T config) {
     p.writeAsString(configFilePath, config.tojsonString());
   }

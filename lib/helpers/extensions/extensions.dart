@@ -1,16 +1,17 @@
-// Barallel file just for exports;
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
 
-/// date extensions
+/// A collection of utility extensions for standard Dart types.
+///
+/// This barrel library provides centralized access to date, integer, list,
+/// map, and string extensions used throughout the UDM project.
+library;
+
 export 'date_extensions.dart';
-
-/// int extensions
 export 'int_extensions.dart';
-
-// list extensions
 export 'list_extensions.dart';
-
-/// map extension
 export 'map_extension.dart';
-
-/// string extension
 export 'string_extension.dart';

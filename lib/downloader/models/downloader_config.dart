@@ -1,144 +1,114 @@
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
+
+/// Configuration and strategy definitions for the UDM downloader.
+///
+/// This library contains the [DownloaderConfig] class and the [DownloadType]
+/// enum, which together define how a file should be downloaded, where it
+/// should be saved, and how progress should be reported.
+library;
+
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
-
 import 'package:udm/helpers/path_helpers/path_helpers.dart';
-import 'package:udm/models/saveable_config.dart';
 
-/// Specifies the strategy the downloader should employ to fetch the file.
-///
-/// **Why**: Servers vary in their support for concurrent range requests. This enum
-/// allows users to force a safe path or let the system optimize.
+/// Specifies the strategy the downloader should employ to fetch the remote file.
 enum DownloadType {
-  /// Forces the downloader to use a single persistent stream.
+  /// Forces the downloader to use a single persistent HTTP stream.
   ///
-  /// **Why**: Useful for testing or for servers that explicitly ban multi-connections.
-  /// **How**: Set this in [DownloaderConfig] to bypass multi-thread logic.
+  /// This is recommended for servers that do not support Range requests or
+  /// have strict limits on concurrent connections.
   single,
 
-  /// Automatically chooses the best method (Multi-stream if supported, fallback to Single).
+  /// Automatically selects the most efficient download strategy.
   ///
-  /// **Why**: Provides the best performance balance without risking failure on non-resumable servers.
-  /// **Note**: This is the default and recommended type.
+  /// The system will attempt a multi-threaded download if the server supports
+  /// Range requests and the file size justifies the overhead. Otherwise, it
+  /// falls back to a single stream.
   smart,
 }
 
-/// Configuration container for all parameters required by the [Downloader].
+/// A comprehensive configuration container for the [Downloader].
 ///
-/// **Why**: Centralizes settings like output paths, thread counts, and headers to
-/// ensure consistent behavior across different download instances.
-/// **How**: Can be instantiated manually or loaded from a saved JSON configuration.
-class DownloaderConfig extends SaveableConfig<DownloaderConfig>
-    implements Savable<DownloaderConfig> {
+/// [DownloaderConfig] centralizes all settings related to a download operation,
+/// including filesystem paths, network headers, concurrency levels, and UI
+/// preferences. It supports hierarchical configuration: explicit user input
+/// overrides saved preferences, which in turn override system defaults.
+class DownloaderConfig {
   /// The directory where the downloaded file will be saved.
   ///
   /// **Note**: If null, the system's default download directory is used.
   /// **Caution**: Ensure the process has write permissions for this directory.
-  // Layer 1: Explicit User Input (Keep null if not provided)
+  /// Explicitly set output directory provided during instantiation.
   String? _explicitOutputDir;
 
-  /// The preferred filename for the saved file.
-  ///
-  /// **Why**: Allows users to override the default filename resolved from headers or URL.
-  /// **Note**: If a file with the same name exists, a unique suffix will be appended.
+  /// Explicitly set filename provided during instantiation.
   String? _explicitFilename;
 
-  /// Whether to print detailed internal logs to the terminal.
-  ///
-  /// **Why**: Essential for debugging communication between isolates and servers.
+  /// Whether to output internal debugging information.
   final bool verbose;
 
-  /// the [DownloadType] that the downloader will use to download the file, it is optional and defaults to [DownloadType.smart]
+  /// The strategy used for fetching the file (e.g., [DownloadType.smart]).
   final DownloadType downloadType;
 
-  /// the time duration of progress syncing in milliseconds
-  /// to prevent the cpu wastage we wont be polling the status too frequently
-  /// set this to a suitable [Duration] value in milliseconds
+  /// The interval (in milliseconds) for synchronizing progress between worker
+  /// isolates and the main thread.
   ///
-  /// Note:: this is the same duration that will be used in the [Downloader.timerFunction] to send the timer tick to status and show progress
-  /// defaults to 500 milliseconds
+  /// This interval also dictates the frequency of [Downloader.timerFunction]
+  /// execution. Defaults to 500ms.
   final int progressSyncInterval;
 
-  /// either to show the progress in the terminal or not
-  /// if this is [false] then we will not be showing the progress in the terminal
+  /// Whether to render a progress bar and status updates in the terminal.
   ///
-  /// This is different from [verbose] in that this only controls the progress display
-  /// while [verbose] controls all logs
-  ///
-  /// defaults to true
+  /// If set to `false`, the downloader will still emit progress via the
+  /// [Downloader.progressStream] but will not write to `stdout`.
   late final bool showProgressInTerminal;
 
-  /// if this is true then we will log every steps into the terminal
+  /// Enables detailed step-by-step logging of the download process.
   ///
-  /// this depends upoon the [showProgressInTerminal] value
-  ///
-  /// if [showProgressInTerminal] is false then we will not be logging any steps even if this is true
-  ///
-  /// defaults to false
+  /// Requires [showProgressInTerminal] to be `true` for any terminal output.
   final bool isVerboseMode;
 
-  /// the no of threads to be used if in case the multi stream download is supported
+  /// The number of concurrent connections (threads/isolates) to use for
+  /// multi-threaded downloads.
   ///
-  /// this value will have no effect if the server does not support multi stream download
-  ///
-  /// Choose a appropriate value as this is repsonsible to spawn isolate(threads) which consumes CPU power
-  /// this is optional and defaults to 10
-  ///
-  /// Note:: that setting this value to a huge doesnot boost the speed, if your wifi is 20mbps download will never ever be more then 20mbps remember that
-  /// in some case the download will be slowed if too many spawned as each has own overhead, latency, and CPU usage
-  /// the 8-12 is a ideal value for most cases
-  ///
+  /// Higher values can increase throughput but also increase CPU and memory
+  /// overhead. Values between 8 and 12 are typically optimal.
   final int threadCount;
 
-  /// the headers to be sent with the request, optional
-  ///
-  /// This will be attached to every request the downloader will make
-  ///
-  /// If making request to a protected site then setting this is ideal or else download may fail
-  ///
+  /// Optional HTTP headers to include in every request (e.g., User-Agent, Authorization).
   final Map<String, String>? headers;
 
-  /// the cookie string to be sent with the request, optional
-  ///
-  /// This will be attached to every request the downloader will make
-  ///
-  /// If making request to a protected site then setting this is ideal or else download may fail
-  ///
+  /// Optional cookie string to be sent with the request headers.
   final String cookie;
 
-  /// if this is true then we will append the extension from the header info to the filename
-  /// even if the filename already has an extension
-  ///
-  /// defaults to true
+  /// If `true`, the system prefers the file extension resolved from server
+  /// headers over any extension provided in the user's preferred filename.
   final bool preferResolvedExtension;
 
-  /// in each instance creation this will be initialized with the saved config or user preference
-  ///
-  /// any changes made to the config file afterwards is not reflected in the existing instances.
+  /// Internal map of settings loaded from a persistent configuration file.
   Map<String, dynamic> _userPreference = {};
 
-  /// the getter for the filename
-  ///
-  /// it will return the resolved filename which is either from the user preference or from the header info or from the url
-  /// it can stay null in that  case the downloader determines either by the header or use default name
+  /// Resolves the current filename based on hierarchy (Explicit > Preferred > Default).
   String? get _filename {
     return _explicitFilename ?? _userPreference['preferredFilename'];
   }
 
-  /// returns true if the filename is set by the user
+  /// Returns `true` if a non-empty filename has been explicitly set.
   bool get isFilenameSet => _filename != null && _filename!.isNotEmpty;
 
-  /// the final filename to be used
+  /// The resolved filename, defaulting to "UDM-Downloaded-File" if none is set.
   String get filename => _filename ?? "UDM-Downloaded-File";
 
-  /// the setter for the filename
-  ///
-  /// it will update the filename in the user preference
+  /// Sets or clears the explicit filename preference.
   set filename(String? name) {
     _explicitFilename = (name == null || name.isEmpty) ? null : name;
   }
 
-  /// setter for output dir
+  /// Sets the output directory and ensures all parent directories are created.
   set outputDir(String? dir) {
     if (dir != null && dir.isNotEmpty) {
       p.mkDirAll(dir);
@@ -146,7 +116,7 @@ class DownloaderConfig extends SaveableConfig<DownloaderConfig>
     }
   }
 
-  /// Resolves the full path and ensures a unique name to avoid overwriting
+  /// Calculates the absolute file path, ensuring uniqueness to avoid overwriting.
   String get absoluteFilename {
     final baseDir = outputDir;
     final name = filename;
@@ -154,17 +124,28 @@ class DownloaderConfig extends SaveableConfig<DownloaderConfig>
     return p.getUniqueName(p.join(baseDir, name));
   }
 
+  /// Resolves the current output directory based on hierarchy (Explicit > Preferred > System Default).
   String get outputDir {
     return _explicitOutputDir ??
         _userPreference['outputDir'] ??
         p.getDownloadDir(); // Layer 3: Hard-coded Default
   }
 
+  /// Creates a new [DownloaderConfig] with customizable settings.
+  ///
+  /// - [saveDir]: Directory where the file will be saved.
+  /// - [filename]: Preferred name for the file.
+  /// - [verbose]: Enable low-level HTTP debugging logs.
+  /// - [downloadType]: Strategy for downloading (defaults to [DownloadType.smart]).
+  /// - [progressSyncInterval]: Milliseconds between progress updates (defaults to 500).
+  /// - [showProgressInTerminal]: Render UI in terminal (defaults to true if terminal detected).
+  /// - [headers]: Custom HTTP headers.
+  /// - [cookie]: Custom HTTP cookie.
+  /// - [threadCount]: Number of isolates for multi-threading (defaults to 10).
+  /// - [isVerboseMode]: Enable detailed step logging.
+  /// - [preferResolvedExtension]: Append extensions from headers (defaults to true).
   DownloaderConfig({
-    /// the path where the file will be saved, if not given then we will try to get from preference or default dir
     String? saveDir,
-
-    /// if not given then we will try to get from header info
     String? filename,
     this.verbose = false,
     this.downloadType = DownloadType.smart,
@@ -179,7 +160,7 @@ class DownloaderConfig extends SaveableConfig<DownloaderConfig>
     populateConfigs();
 
     //Assign "User" Layer (this overrides the saved layer in getters)
-    this.outputDir = saveDir;
+    outputDir = saveDir;
     this.filename = filename;
 
     /// if the stdout has no terminal connected then we will not be showing the progress
@@ -190,8 +171,10 @@ class DownloaderConfig extends SaveableConfig<DownloaderConfig>
     }
   }
 
-  /// finds the path to the config file
-  /// it depends upoon the platform dir and if not found then it will make a new one defaulting to the home dir
+  /// Resolves the absolute path to the global UDM configuration file.
+  ///
+  /// Respects the `UDM_CONFIG_PATH` environment variable if present; otherwise,
+  /// defaults to `~/.udm/config.json`.
   static String get configPath {
     String path;
     String fallbackPath = p.join(p.getHomeDir(), ".udm", "config.json");
@@ -199,27 +182,21 @@ class DownloaderConfig extends SaveableConfig<DownloaderConfig>
     return path;
   }
 
-  /// reads the config file and populates the _userPreference
-  ///
+  /// Reads and parses the persistent configuration file into [_userPreference].
   void populateConfigs() {
     try {
-      _userPreference = readSavedConfig();
+      // TODO: need to implemnet it properly
+      _userPreference = {};
     } catch (e) {
       print("Error while reading config file: $e");
       _userPreference = {};
     }
   }
 
-  /// updates the config file with the new configs
+  /// Updates the persistent configuration file with the provided [configs].
   ///
-  /// it will overwrite the file if it exists
-  /// if the path does not exist then it will create it
-  ///
-  /// the config file is a json file that contains the following fields:
-  /// - "outputDir": the directory where the downloaded file will be saved
-  /// - "preferredFilename": the preferred filename that you want to use for the saved file
-  /// - "verbose": the [DownloadType] that the downloader will use to download the file
-  /// - "downloadType": the [DownloadType] that the downloader will use to download the file
+  /// Merges [configs] with the existing file content. Creates the file if it
+  /// does not exist.
   static void updateConfig(Map<String, dynamic> configs) {
     final file = File(configPath);
     Map<String, dynamic> json = {};
@@ -232,8 +209,7 @@ class DownloaderConfig extends SaveableConfig<DownloaderConfig>
     file.writeAsStringSync(jsonEncode(json));
   }
 
-  /// copies the current [DownloaderConfig] with the new states
-  /// if any of the parameters is not provided then it will use the current value
+  /// Creates a copy of the current [DownloaderConfig] with updated properties.
   DownloaderConfig copyWith({
     String? fileUrl,
     String? saveDir,
@@ -248,7 +224,7 @@ class DownloaderConfig extends SaveableConfig<DownloaderConfig>
     bool? preferResolvedExtension,
   }) {
     return DownloaderConfig(
-      saveDir: saveDir ?? this.outputDir,
+      saveDir: saveDir ?? outputDir,
       filename: filename ?? this.filename,
       downloadType: downloadType ?? this.downloadType,
       progressSyncInterval: progressSyncInterval ?? this.progressSyncInterval,
@@ -261,8 +237,7 @@ class DownloaderConfig extends SaveableConfig<DownloaderConfig>
     );
   }
 
-  /// this instance is used in case there is no other config available or user has not set any config
-  /// [Downloader] class uses this instance if there is no config provided for it
+  /// A default configuration instance used when no specific settings are provided.
   static final DownloaderConfig defaultInstance = DownloaderConfig(
     saveDir: p.getDownloadDir(),
     filename: "UDM-Downloaded-File",

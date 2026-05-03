@@ -1,36 +1,56 @@
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
+
+/// Terminal manipulation and formatted logging utilities.
+///
+/// This library provides the [TerminalHelper] mixin and [LogBuffer] class for
+/// advanced console interactions, including colored output, raw mode handling,
+/// and dynamic line clearing (useful for progress bars).
+library;
+
 import 'dart:io';
 
+/// ANSI escape codes for terminal text coloring.
 enum TerminalColor {
+  /// Red text.
   red("\x1B[31m"),
+
+  /// Green text.
   green("\x1B[32m"),
+
+  /// Yellow text.
   yellow("\x1B[33m"),
+
+  /// Blue text.
   blue("\x1B[34m"),
+
+  /// Cyan text.
   cyan("\x1B[36m"),
+
+  /// Reset all formatting.
   reset("\x1B[0m");
 
+  /// The raw ANSI escape code string.
   final String colorCode;
 
+  /// Creates a [TerminalColor] with its associated code.
   const TerminalColor(this.colorCode);
 }
 
-/// Useful direct constants for short redable code
-/// Tc stands for terminal color
-final String yellowTc = TerminalColor.yellow.colorCode;
-final String redTc = TerminalColor.red.colorCode;
-final String greenTc = TerminalColor.green.colorCode;
-final String blueTc = TerminalColor.blue.colorCode;
-final String cyanTc = TerminalColor.cyan.colorCode;
-final String resetTc = TerminalColor.reset.colorCode;
-
+/// A mixin providing basic terminal logging and interaction capabilities.
 mixin TerminalHelper {
   String _makeMessage(String message, TerminalColor terminalColor, {String? label}) {
     if (label != null) {
-      return "[ ${terminalColor.colorCode} $label $resetTc ] $message$resetTc";
+      return "[ ${terminalColor.colorCode} $label ${TerminalColor.reset.colorCode} ] $message${TerminalColor.reset.colorCode}";
     } else {
-      return "${terminalColor.colorCode} $message$resetTc";
+      return "${terminalColor.colorCode} $message${TerminalColor.reset.colorCode}";
     }
   }
 
+  /// Logs an error message to `stderr` in red.
   void logError(String message, [String? label]) {
     stderr.writeln(_makeMessage(message, TerminalColor.red, label: label));
   }
@@ -52,6 +72,7 @@ mixin TerminalHelper {
     stdout.write('\x1B[2J\x1B[0;0H');
   }
 
+  /// Disables echo and line buffering for interactive CLI input.
   void enableRawMode() {
     if (stdin.hasTerminal) {
       stdin.echoMode = false;
@@ -60,6 +81,7 @@ mixin TerminalHelper {
     }
   }
 
+  /// Re-enables standard terminal input modes.
   void disableRawMode() {
     if (stdin.hasTerminal) {
       stdin.echoMode = true;
@@ -69,14 +91,16 @@ mixin TerminalHelper {
   }
 }
 
-/// prints a message and cleans the next n lines in terminal
+/// Prints a [message] and clears [linesToClean] following lines.
+///
+/// Only executes if [isVerboseMode] is `true`.
 void println(String message, [int linesToClean = 1, bool isVerboseMode = false]) {
   if (!isVerboseMode) return;
   cleanln(linesToClean);
-  stdout.writeln("$message");
+  stdout.writeln(message);
 }
 
-/// cleans last n lines in terminal
+/// Clears the last [n] lines from the terminal using ANSI escape codes.
 void cleanln(int n) {
   for (int i = 0; i < n; i++) {
     stdout.write('\x1B[1A'); // Move cursor up one line
@@ -84,18 +108,26 @@ void cleanln(int n) {
   }
 }
 
-/// A class for managing log buffer in terminal
-/// use [cleanLastLinesAndPrint] to clean last n lines and print the given text
-/// this class is usefull for printing progress bars and other dynamic information
+/// A sophisticated terminal output manager with automated line tracking.
+///
+/// [LogBuffer] allows for "redrawing" blocks of text by tracking how many physical
+/// lines (including terminal wraps) were printed. It is essential for rendering
+/// stable progress bars and multi-line status updates.
 class LogBuffer with TerminalHelper {
+  /// Whether to actually print to the terminal.
   final bool showProgressInTerminal;
 
+  /// Creates a [LogBuffer]. If [showProgressInTerminal] is false, all write
+  /// operations become no-ops.
   LogBuffer({this.showProgressInTerminal = false});
 
   int _lastLineCount = 0;
   int _currentLineCursor = 0; // Tracks the horizontal column (0 to Width-1)
 
-  /// The heavy lifter: Handles text, literal newlines, and automatic wrapping
+  /// Writes [text] to the terminal and updates the physical line count.
+  ///
+  /// This method intelligently calculates terminal wrapping to ensure [clean]
+  /// can accurately remove the exact number of lines printed.
   void write(String text) {
     // if we are not in verbose mode then we dont bother to print
     if (!showProgressInTerminal) return;
@@ -140,13 +172,13 @@ class LogBuffer with TerminalHelper {
     write('$text\n');
   }
 
-  /// Redraws a block of text, accounting for wrapping within that block
+  /// Clears all previously tracked lines and prints new [text].
   void cleanLastLinesAndPrint(String text) {
     clean();
     write(text);
   }
 
-  /// Moves the cursor up and clears every physical line we've tracked
+  /// Clears all physical lines tracked since the last [clean].
   void clean() {
     if (_lastLineCount == 0) return;
 

@@ -1,3 +1,16 @@
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
+
+/// Telemetry and lifecycle tracking for download operations.
+///
+/// This library provides the [DownloadStatus] class and [DownloadState] enum,
+/// which are used to monitor progress, calculate speed/ETA, and manage the
+/// state transitions of a download.
+library;
+
 import 'dart:async';
 import 'dart:io';
 
@@ -5,37 +18,42 @@ import 'package:udm/helpers/extensions/date_extensions.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/helpers/extensions/map_extension.dart';
 
-/// Represents the current lifecycle stage of a download process.
+/// Defines the possible stages of a download's lifecycle.
 enum DownloadState {
-  /// Initial setup, including head parsing and file allocation.
+  /// The downloader is preparing resources, fetching headers, or allocating disk space.
   initial,
 
-  /// Actively fetching data from the remote server.
+  /// Data is being actively received and written to disk.
   downloading,
 
-  /// Data stream is suspended but can be resumed.
+  /// The download is temporarily suspended but retains its progress.
   paused,
 
-  /// Download stopped by user or fatal error; cannot be resumed from this state.
+  /// The download was terminated by the user or due to a fatal error.
   cancelled,
 
-  /// File fully downloaded and verified.
+  /// The download finished successfully and all data is flushed to disk.
   completed,
 }
 
-/// the status class of the download
-/// it holds the overall progress of the download
-/// and the speed of the download
+/// A comprehensive monitor for download progress and performance metrics.
 ///
-/// Tracks the real-time telemetry and state of a download.
-///
-/// **Why**: Centralizes progress, speed, ETA, and timing calculations.
-/// **How**: Used by [Downloader] to emit updates via [stream].
+/// [DownloadStatus] tracks bytes downloaded, calculates real-time transfer speeds,
+/// estimates time remaining (ETA), and manages lifecycle state transitions. It
+/// provides a broadcast [stream] for UI updates and includes built-in terminal
+/// progress bar generation.
 class DownloadStatus {
+  /// Creates a new [DownloadStatus] with a specified [totalSize] in bytes.
+  ///
+  /// An optional [id] can be provided; otherwise, a unique ID is generated
+  /// based on the current timestamp.
   DownloadStatus({required this.totalSize, int? id}) {
     this.id = id ?? DateTime.now().millisecond.toInt();
   }
 
+  /// Factory constructor to reconstruct a [DownloadStatus] from a Map.
+  ///
+  /// Used for state restoration or communication between isolates.
   factory DownloadStatus.fromMap(Map<String, dynamic> map) {
     map.ensureKeyExists(["totalSize", "id", "state"]);
     return DownloadStatus(totalSize: map["totalSize"], id: map["id"])
@@ -43,9 +61,10 @@ class DownloadStatus {
       ..state = DownloadState.values[map["state"]];
   }
 
-  /// helper to convert the current state to a map
-  /// we do not include all fields as all other fields are just derived from `totalBytesDownloaded` and `state`
+  /// Serializes the essential state into a Map.
   ///
+  /// Includes [id], [totalBytesDownloaded], [state], and [totalSize]. Derived
+  /// metrics like speed and ETA are excluded as they are recalculated per-tick.
   Map<String, dynamic> toMap() {
     return {
       "id": id,
@@ -55,6 +74,9 @@ class DownloadStatus {
     };
   }
 
+  /// Updates the current status properties from values in a Map.
+  ///
+  /// Throws an exception if mandatory keys are missing.
   void updateFromMap(Map<String, dynamic> map) {
     map.ensureKeyExists([
       "id",
@@ -81,12 +103,14 @@ class DownloadStatus {
     }
   }
 
-  /// updates the status from other status
-  /// similar to the .copyWith  in flutter theme class
+  /// Merges properties from another [DownloadStatus] instance.
+  ///
+  /// This method performs a hard update of progress and state. Throws an
+  /// exception if the IDs of the two status instances do not match.
   void updateFromStatus(DownloadStatus status) {
     if (id != status.id) {
       throw Exception(
-        "Status IDs do not match, trying to update this(${this.id}) with ${status.id}",
+        "Status IDs do not match, trying to update this($id) with ${status.id}",
       );
     }
 
@@ -109,13 +133,14 @@ class DownloadStatus {
     // bytesPerSecond is NOT updated here because it's usually calculated by the timer in the receiver isolate
   }
 
-  /// this increments self from the given status
-  /// this does not override the current bytes download count
-  /// it rather just adds on it
+  /// Adds the progress delta from another [DownloadStatus] to this instance.
+  ///
+  /// Unlike [updateFromStatus], this performs an incremental update, which is
+  /// useful when aggregating multiple worker stream progresses into an overall status.
   void addProgressFromStatus(DownloadStatus status) {
     if (id != status.id) {
       throw Exception(
-        "Status IDs do not match, trying to update this(${this.id}) with ${status.id}",
+        "Status IDs do not match, trying to update this($id) with ${status.id}",
       );
     }
     final delta = status.totalBytesDownloaded - _previousSyncBytes;
@@ -125,26 +150,35 @@ class DownloadStatus {
 
   int _previousSyncBytes = 0;
 
-  late final int id; // to identify the stream
+  /// Unique identifier for the download stream.
+  late final int id;
 
-  final int totalSize; // the final size a chunk is assigned to download
-  int totalBytesDownloaded = 0; // the overall progress of download
-  int _previousBytesDownloaded = 0; // field needed for calculating speed in timer tick
+  /// The total expected size of the download (or chunk) in bytes.
+  final int totalSize;
 
-  /// The current transfer speed normalized to Bytes Per Second (BPS).
-  ///
-  /// **Why**: Standardizing on BPS allows for consistent formatting across different units (KB/s, MB/s).
+  /// Total number of bytes downloaded and verified so far.
+  int totalBytesDownloaded = 0;
+
+  /// Progress tracker for calculating speed since the last timer tick.
+  int _previousBytesDownloaded = 0;
+
+  /// Current transfer speed in bytes per second.
   double bytesPerSecond = 0;
 
   // Logic Helpers
+  /// Remaining bytes to be downloaded.
   int get bytesLeft => totalSize - totalBytesDownloaded;
+
+  /// Progress as a percentage (0.0 to 100.0).
   double get progressPercent =>
       totalSize > 0 ? (totalBytesDownloaded / totalSize) * 100 : 0;
+
+  /// Human-readable speed string (e.g., "1.2 MB/s").
   String get speedText => bytesPerSecond.toInt().humanReadableSpeed;
 
-  /// returns the downloaded size and total size in a readable format
-  /// for eg "100 MB / 200 MB"
-  /// if the total size is unknown it returns "Unknown Size"
+  /// Formatted string representing downloaded size vs total size.
+  ///
+  /// Example: "10.5 MB / 100.0 MB". Returns "Unknown Size" if total size is invalid.
   String get sizeLeftText {
     if (totalSize <= 0) return "Unknown Size";
 
@@ -153,16 +187,17 @@ class DownloadStatus {
     return "$downloaded / $total";
   }
 
-  // Stream for UI listeners (broadcast allows multiple listeners like UI + Loggers)
+  /// Broadcast stream providing real-time updates of this status object.
   final StreamController<DownloadStatus> _controller =
       StreamController<DownloadStatus>.broadcast();
+
+  /// External access to the progress stream.
   Stream<DownloadStatus> get stream => _controller.stream;
 
-  /// The current state of the download lifecycle.
-  ///
-  /// **Why**: Controls UI behavior (e.g., showing/hiding Pause button).
+  /// Current stage of the download lifecycle.
   DownloadState state = DownloadState.initial;
 
+  /// Transition to a new [DownloadState] and notify stream listeners.
   void updateState(DownloadState newState) {
     if (state == DownloadState.completed || state == DownloadState.cancelled) return;
     state = newState;
@@ -174,34 +209,6 @@ class DownloadStatus {
   bool get isCompleted => state == DownloadState.completed;
   bool get isDownloading => state == DownloadState.downloading;
   bool get isInitialising => state == DownloadState.initial;
-
-  /// state mutator
-  void markPaused() {
-    if (state != DownloadState.downloading) return;
-    _sliceStartTime = null; // Clear the anchor
-    updateState(DownloadState.paused);
-  }
-
-  void markResumed() {
-    if (!isPaused) return;
-    _sliceStartTime = DateTime.now();
-    updateState(DownloadState.downloading);
-  }
-
-  void markCancelled() {
-    _sliceStartTime = null;
-    updateState(DownloadState.cancelled);
-  }
-
-  void markStarted() {
-    _sliceStartTime = DateTime.now();
-    updateState(DownloadState.downloading);
-  }
-
-  void markCompleted() {
-    _sliceStartTime = null;
-    updateState(DownloadState.completed);
-  }
 
   /// THE TIME CALCULATOR TO KNOW THE TIME TAKEN TO COMPLETE DOWNLOAD
   Duration _accumulatedDuration = Duration.zero;
@@ -242,6 +249,39 @@ class DownloadStatus {
 
   String get timeTaken => activeDuration.readableFormat;
 
+  /// Transitions the state to [DownloadState.paused].
+  void markPaused() {
+    if (state != DownloadState.downloading) return;
+    _sliceStartTime = null; // Clear the anchor
+    updateState(DownloadState.paused);
+  }
+
+  /// Transitions the state back to [DownloadState.downloading].
+  void markResumed() {
+    if (!isPaused) return;
+    _sliceStartTime = DateTime.now();
+    updateState(DownloadState.downloading);
+  }
+
+  /// Transitions the state to [DownloadState.cancelled].
+  void markCancelled() {
+    _sliceStartTime = null;
+    updateState(DownloadState.cancelled);
+  }
+
+  /// Transitions the state to [DownloadState.downloading] from initial.
+  void markStarted() {
+    _sliceStartTime = DateTime.now();
+    updateState(DownloadState.downloading);
+  }
+
+  /// Transitions the state to [DownloadState.completed].
+  void markCompleted() {
+    _sliceStartTime = null;
+    updateState(DownloadState.completed);
+  }
+
+  /// Formatted string representing the average speed over the entire session.
   String get averageSpeedText {
     final seconds = activeDuration.inSeconds;
     if (seconds <= 0) return 0.humanReadableSpeed;
@@ -250,14 +290,16 @@ class DownloadStatus {
     return avg.humanReadableSpeed;
   }
 
-  /// a simple polling with longer delays.
-  /// this prevents burning cpu cycles unnecessarily
+  /// Helper that yields control until the download state is no longer [DownloadState.paused].
   Future<void> waitUntilResume() async {
     while (state == DownloadState.paused) {
       await Future.delayed(const Duration(milliseconds: 200));
     }
   }
 
+  /// Estimated Time Arrival (ETA) as a readable string.
+  ///
+  /// Returns "Paused" or "N/A" if calculations are not possible.
   String get eta {
     if (state == DownloadState.paused) return "Paused";
     if (bytesPerSecond <= 0) return "N/A left";
@@ -267,14 +309,16 @@ class DownloadStatus {
     return secondsLeft.asReadableTimeUnit;
   }
 
-  /// call this when you receive a chunk of data
+  /// Increments the total bytes downloaded.
   void increment(int bytesReceived) {
     totalBytesDownloaded += bytesReceived;
   }
 
-  /// this will be called by the parent timer so we can assume that this is called every tick duration
-  /// Called by the Downloader's timer.
-  /// Pass the actual duration of the timer tick (e.g., 500ms)
+  /// Periodic calculation of transfer speed and lifecycle updates.
+  ///
+  /// Should be called by a [Timer] at regular intervals (defined by [interval]).
+  /// Automatically marks the download as completed if [totalBytesDownloaded]
+  /// meets [totalSize].
   void timerTick(Duration interval) {
     final int delta = totalBytesDownloaded - _previousBytesDownloaded;
     _previousBytesDownloaded = totalBytesDownloaded;
@@ -289,13 +333,17 @@ class DownloadStatus {
     _notify();
   }
 
+  /// Broadcasts the current status to all stream listeners.
   void _notify() {
     if (!_controller.isClosed) {
       _controller.add(this);
     }
   }
 
-  /// unified method for showing progress
+  /// Generates a visual progress bar string for terminal display.
+  ///
+  /// Adapts based on the current [state] (e.g., showing a solid bar for completed,
+  /// or "Paused" text).
   String makeProgressBar({int? barLength, int? preferredWidth}) {
     if (totalBytesDownloaded >= totalSize && totalSize > 0) {
       markCompleted();
@@ -395,38 +443,38 @@ class DownloadStatus {
     return "[$bar] $suffix";
   }
 
+  /// Closes the internal stream controller.
   Future<void> dispose() async {
     await _controller.close();
   }
 }
 
-/// these methods are supposed to be helpers for multiple isolates
-/// useful for isolate workers to manage all at once
+/// Collection of utility methods for managing a list of [DownloadStatus] instances.
+///
+/// Useful for orchestrating multiple worker streams in multi-threaded downloads.
 extension StatusHelper on List<DownloadStatus> {
+  /// Triggers a timer tick for every status in the list.
   void tickAll(Duration interval) {
     for (var status in this) {
       status.timerTick(interval);
     }
   }
 
-  /// cancels all the statuses in the list
-  /// if status working in isolate they will also be cancelled
+  /// Transition all statuses in the list to the cancelled state.
   void cancelAll() {
     for (var status in this) {
       status.updateState(DownloadState.cancelled);
     }
   }
 
-  ///disposes all the statuses in the list
-  /// it also waits for the stream to complete
+  /// Disposes every status instance in the list.
   Future<void> disposeAll() async {
     for (var status in this) {
       await status.dispose();
     }
   }
 
-  /// makes progress strings for all the statuses
-  /// can be used to display progress of all the workers in the main thread
+  /// Generates a list of formatted progress bar strings for all statuses.
   List<String> makeProgressAll({int? barLength, int? preferredWidth}) {
     final List<String> progressList = [];
     for (var status in this) {

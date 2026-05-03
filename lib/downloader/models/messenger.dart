@@ -1,27 +1,69 @@
+// Author:: Utsav Pokhrel
+// Contact:: utsavpokhrel100@gmail.com
+// Github:: https://github.com/utsav-56
+//
+// Provided under the MIT License.
+
+/// Inter-isolate communication protocol for the UDM downloader.
+///
+/// This library defines the messaging system used to synchronize state between
+/// the main isolate and worker isolates during multi-threaded downloads.
+library;
+
 import 'dart:isolate';
 
 import 'package:udm/downloader/downloader.dart';
 import 'package:udm/downloader/models/download_status.dart';
-import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/helpers/extensions/map_extension.dart';
 import 'package:udm/models/range.dart';
 
-enum WorkerMessageType { progress, error, signal, handshake }
+/// Categories of messages that can be exchanged between isolates.
+enum WorkerMessageType {
+  /// Reports download progress and telemetry.
+  progress,
 
-enum SignalType { pause, resume, cancel }
+  /// Reports a fatal or recoverable error in a worker.
+  error,
 
+  /// Lifecycle commands (pause, resume, cancel).
+  signal,
+
+  /// Initial connection setup to exchange [SendPort]s.
+  handshake
+}
+
+/// Control signals sent from the main isolate to worker isolates.
+enum SignalType {
+  /// Suspend the current data stream.
+  pause,
+
+  /// Resume a suspended data stream.
+  resume,
+
+  /// Terminate the worker and cleanup resources.
+  cancel
+}
+
+/// Base class for all messages sent between the main isolate and workers.
 abstract class WorkerMessage {
+  /// The category of this message.
   final WorkerMessageType type;
+
+  /// The unique identifier of the worker isolate involved.
   final int index;
 
+  /// Internal constructor for [WorkerMessage].
   WorkerMessage({required this.type, required this.index});
 
+  /// Serializes specific message data into a Map.
   Map<String, dynamic> toMapSelf();
 
+  /// Serializes the entire message, including metadata, into a Map.
   Map<String, dynamic> toMap() {
     return {...toMapSelf(), "type": type.index, "index": index};
   }
 
+  /// Reconstructs a [WorkerMessage] from a serialized Map.
   factory WorkerMessage.fromMap(Map<String, dynamic> map) {
     map.ensureKeyExists([
       "type",
@@ -44,8 +86,7 @@ abstract class WorkerMessage {
     }
   }
 
-  /// this parses the message from raw data sent by the port
-  /// it is universal can be used by any class to parse the message
+  /// Parses raw data from a [ReceivePort] into a [WorkerMessage].
   factory WorkerMessage.parseFromData(dynamic data) {
     if (data is! Map) {
       throw Exception("Invalid message format : $data");
@@ -56,7 +97,9 @@ abstract class WorkerMessage {
   }
 }
 
+/// Message used by workers to report their current [DownloadStatus].
 class ProgressMessage extends WorkerMessage {
+  /// The telemetry data for this worker's chunk.
   final DownloadStatus status;
 
   ProgressMessage(int index, {required this.status})
@@ -72,10 +115,12 @@ class ProgressMessage extends WorkerMessage {
   }
 }
 
+/// Message used to report an error in a worker isolate.
 class ErrorMessage extends WorkerMessage {
+  /// Descriptive error message.
   final String message;
 
-  /// in case of errror we send back the index and updated range of the chunk
+  /// The byte range that needs to be retried due to the error.
   final Range newRange;
 
   ErrorMessage(int index, {required this.message, required this.newRange})
@@ -100,7 +145,9 @@ class ErrorMessage extends WorkerMessage {
   }
 }
 
+/// Message used to send lifecycle signals to workers.
 class SignalMessage extends WorkerMessage {
+  /// The type of signal to be processed.
   final SignalType signal;
 
   SignalMessage(int index, {required this.signal})
@@ -120,11 +167,13 @@ class SignalMessage extends WorkerMessage {
   }
 }
 
+/// Message used during the initial isolate spawn to exchange communication ports.
 class HandshakeMessage extends WorkerMessage {
+  /// The port through which the main isolate can send messages to this worker.
   final SendPort sendPort;
 
-  HandshakeMessage({required this.sendPort, required int index})
-    : super(type: WorkerMessageType.handshake, index: index);
+  HandshakeMessage({required this.sendPort, required super.index})
+    : super(type: WorkerMessageType.handshake);
 
   @override
   Map<String, dynamic> toMapSelf() {
@@ -140,19 +189,22 @@ class HandshakeMessage extends WorkerMessage {
   }
 }
 
-/// class that will be used to send the message to main isolate
+/// Manages isolate-level communication for a specific worker.
+///
+/// The [WorkerMessenger] encapsulates the [SendPort] and [ReceivePort] logic,
+/// providing a high-level API for sending progress and receiving signals
+/// within a worker isolate.
 class WorkerMessenger {
-  /// the port that was sent by the main isolate during the intialization of worker
+  /// Port provided by the main isolate for outbound messages.
   late final SendPort _sendPort;
 
-  /// this is the internal port of the current worker which is used to communicate with the main isolate
-  /// we make the messagePort as null initially and later in start method we pass the _receivePort
+  /// Local port for receiving inbound signals from the main isolate.
   late final ReceivePort _messagePort;
 
+  /// Index identifying this worker in the multi-threaded pool.
   final int workerIndex;
 
-  // CALLBACK FUNCTIONS INCOMING FROM MAIN
-  // MAIN CANN ONLY SEND THE SIGNALS NOTHING ELSE
+  /// Callback executed when a [SignalMessage] is received from the main isolate.
   void Function(SignalMessage)? onSignalIn;
 
   /// private constructor
@@ -161,7 +213,7 @@ class WorkerMessenger {
     _messagePort = ReceivePort();
   }
 
-  /// factory to create a new instance of WorkerMessenger
+  /// Creates a [WorkerMessenger] for the given [index] using the provided [sendPort].
   factory WorkerMessenger.fromSendPort(SendPort sendPort, {required int index}) {
     return WorkerMessenger._(sendPort: sendPort, workerIndex: index);
   }
@@ -171,7 +223,7 @@ class WorkerMessenger {
     print("Worker $workerIndex Encountered Unexpected Error: $error");
   }
 
-  /// listens for the messages from the main isolate
+  /// Starts the event loop to listen for inbound messages on [_messagePort].
   void startListening() {
     _messagePort.listen(
       onMessageRecieved,
@@ -183,6 +235,7 @@ class WorkerMessenger {
     );
   }
 
+  /// Internal handler for raw data received on the message port.
   void onMessageRecieved(dynamic data) {
     final message = WorkerMessage.parseFromData(data);
 
@@ -198,19 +251,22 @@ class WorkerMessenger {
     }
   }
 
+  /// Sends a generic [WorkerMessage] to the main isolate.
   void sendMessage(WorkerMessage message) {
     _sendPort.send(message.toMap());
   }
 
+  /// Reports current [status] telemetry to the main isolate.
   void sendProgressToMain(DownloadStatus status) {
     sendMessage(ProgressMessage(workerIndex, status: status));
   }
 
+  /// Reports a failure to the main isolate, providing the [range] for potential retry.
   void sendErrorToMain(Range range, String message) {
     sendMessage(ErrorMessage(workerIndex, newRange: range, message: message));
   }
 
-  /// passes the recive port of current worker to the main isolate as a handshake for messages
+  /// Initiates the handshake by sending the worker's [SendPort] to the main isolate.
   void handshake() {
     sendMessage(HandshakeMessage(sendPort: _messagePort.sendPort, index: workerIndex));
   }
