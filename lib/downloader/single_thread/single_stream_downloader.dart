@@ -30,28 +30,32 @@ import 'package:udm/downloader/head_parser.dart';
 /// ```
 class SingleStreamDownloader extends Downloader {
   /// Creates a [SingleStreamDownloader] for the given [url].
-  SingleStreamDownloader({required super.url, super.config});
+  SingleStreamDownloader({
+    required super.url,
+    required super.headerInfo,
+    super.config,
+    HttpClient? client,
+  }) : _client = client ??
+            (HttpClient()
+              ..maxConnectionsPerHost = 3
+              ..connectionTimeout = const Duration(seconds: 10)
+              ..idleTimeout = const Duration(seconds: 5));
 
   /// Shared HTTP client for the single stream request.
-  final HttpClient _client = HttpClient()
-    ..maxConnectionsPerHost = 3
-    ..connectionTimeout = const Duration(seconds: 10)
-    ..idleTimeout = const Duration(seconds: 5);
-
-  @override
-  Future<void> tryHeadRequest() async {
-    headerInfo = await sendHeadRequest(url, _client, logBuffer);
-  }
+  final HttpClient _client;
 
   @override
   Future<void> timerFunction(Timer timer) async {
     status.timerTick(timerInterval);
 
-    if (stdout.hasTerminal) {
-      if (status.isCompleted) {
+    if (status.isCompleted) {
+      timer.cancel();
+      if (stdout.hasTerminal) {
         showFinalProgress();
-        await cleanup();
-      } else {
+      }
+      await cleanup();
+    } else {
+      if (stdout.hasTerminal) {
         showProgress();
       }
     }

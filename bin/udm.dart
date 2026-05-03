@@ -39,12 +39,13 @@ void main(List<String> arguments) {
     showProgressInTerminal: false,
   );
 
-  final downloader = MultiStreamDownload(
-    url: "https://github.com/flutter/flutter/archive/refs/tags/3.38.3.tar.gz",
-    config: config,
-  );
+  const demoUrl = "https://releases.ubuntu.com/26.04/ubuntu-26.04-desktop-amd64.iso";
+
+  final manager = DownloadManager();
+
+  for (int i = 0; i < 5; i++) {
+    manager.enqueue(demoUrl, config);
+  }
 
   // 1001.divideIntoParts(8).debug(expectedTotal: 1001);
-
-  downloader.start();
 }

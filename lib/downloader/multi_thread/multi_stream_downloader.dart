@@ -35,7 +35,11 @@ import 'package:udm/models/range.dart';
 /// ```
 class MultiStreamDownload extends Downloader {
   /// Creates a [MultiStreamDownload] instance for the given [url].
-  MultiStreamDownload({required super.url, super.config}) {
+  MultiStreamDownload({
+    required super.url,
+    required super.headerInfo,
+    super.config,
+  }) {
     threadCounnt = config.threadCount ?? 8;
   }
 
@@ -56,6 +60,9 @@ class MultiStreamDownload extends Downloader {
 
   /// Progress monitors for each worker stream.
   final WorkerMap<DownloadStatus> _workerStatuses = {};
+
+  /// Expose worker statuses for external UI tracking
+  Map<int, DownloadStatus> get workerStatuses => _workerStatuses;
 
   /// Communication ports to send signals to workers.
   final WorkerMap<SendPort> _workerSendPorts = {};
@@ -86,10 +93,7 @@ class MultiStreamDownload extends Downloader {
     }
   }
 
-  @override
-  Future<void> tryHeadRequest() async {
-    headerInfo = await sendHeadRequest(url, null, logBuffer);
-  }
+
 
   /// Routes and handles messages received from worker isolates.
   ///
@@ -125,10 +129,11 @@ class MultiStreamDownload extends Downloader {
     _receivePort.listen(_handleMessage);
   }
 
+  Completer<void>? _downloadCompleter;
+
   @override
   Future<void> timerFunction(Timer timer) async {
     final statuses = _workerStatuses.values.toList();
-
     statuses.tickAll(timerInterval);
 
     int currentTotal = 0;
@@ -137,15 +142,16 @@ class MultiStreamDownload extends Downloader {
     }
 
     status.totalBytesDownloaded = currentTotal;
-
     status.timerTick(timerInterval);
 
-    if (stdout.hasTerminal) {
-      if (status.isCompleted) {
-        timer.cancel();
+    if (status.isCompleted) {
+      timer.cancel();
+      if (stdout.hasTerminal) {
         showFinalProgress();
-        await cleanup();
-      } else {
+      }
+      await cleanup();
+    } else {
+      if (stdout.hasTerminal) {
         showProgress();
       }
     }
@@ -158,9 +164,13 @@ class MultiStreamDownload extends Downloader {
     startListeningOnRecievePort();
     status.markStarted();
 
+    _downloadCompleter = Completer<void>();
+
     for (int i = 0; i < threadCounnt; i++) {
       _workers[i] = await Isolate.spawn(downloadWorker, _workerChunks[i]!);
     }
+
+    await _downloadCompleter!.future;
   }
 
   @override
@@ -220,6 +230,9 @@ class MultiStreamDownload extends Downloader {
       worker.kill(priority: Isolate.immediate);
     }
     _workers.clear();
+    if (_downloadCompleter != null && !_downloadCompleter!.isCompleted) {
+      _downloadCompleter!.complete();
+    }
   }
 }
 

@@ -23,6 +23,7 @@ import 'package:udm/downloader/models/downloader_config.dart';
 export './models/download_status.dart';
 export 'multi_thread/multi_stream_downloader.dart';
 export './single_thread/single_stream_downloader.dart';
+export 'download_manager.dart';
 
 /// The blueprint for all Downloader implementations in the UDM ecosystem.
 ///
@@ -55,14 +56,54 @@ abstract class Downloader {
   /// The remote URL of the file to be downloaded.
   late final Uri url;
 
-  /// Creates a new [Downloader] instance for the given [url].
+  /// Information retrieved from the server headers.
+  ///
+  /// Contains details such as file size, filename, and range support.
+  final HeaderInfo headerInfo;
+
+  /// A unique timestamped identifier for this downloader instance.
+  late final String id;
+
+  /// Creates a new [Downloader] instance for the given [url] and [headerInfo].
   ///
   /// Optional [config] can be provided to customize download behavior. If omitted,
   /// [DownloaderConfig.defaultInstance] is used.
-  Downloader({required String url, DownloaderConfig? config}) {
+  Downloader({required String url, required this.headerInfo, DownloaderConfig? config}) {
+    id = DateTime.now().millisecondsSinceEpoch.toString();
     this.url = Uri.parse(url);
     this.config = config ?? DownloaderConfig.defaultInstance;
     logBuffer = LogBuffer(showProgressInTerminal: this.config.showProgressInTerminal);
+    _resolveFilename();
+  }
+
+  void _resolveFilename() {
+    String? resolvedName;
+
+    if (!config.isFilenameSet) {
+      // If user hasn't provided a filename, try header info filename
+      resolvedName = headerInfo.filename;
+    } else {
+      // User provided a filename, let's handle the extensions
+      resolvedName = config.filename;
+
+      final String userExt = p.extension(resolvedName) ?? "";
+      final String headerExt = headerInfo.fileExtension ?? "";
+
+      if (headerExt.isNotEmpty) {
+        if (userExt.isEmpty) {
+          // No extension in user provided filename, append header extension
+          resolvedName = "$resolvedName$headerExt";
+        } else if (config.preferResolvedExtension && userExt != headerExt) {
+          // User provided extension but flag says prefer resolved (append)
+          // e.g. demo.archive -> demo.archive.zip
+          resolvedName = "$resolvedName$headerExt";
+        }
+      }
+    }
+
+    if (resolvedName != null && resolvedName.isNotEmpty) {
+      config.filename = resolvedName;
+    }
   }
 
   /// A buffer used to manage and display terminal logs and progress.
@@ -92,50 +133,6 @@ abstract class Downloader {
   /// Returns `true` if the downloader is in the initialization phase.
   bool get isInitialising => status.isInitialising;
 
-  /// Information retrieved from the server headers.
-  ///
-  /// Contains details such as file size, filename, and range support.
-  HeaderInfo? _headerInfo;
-
-  /// Getter for the current [HeaderInfo].
-  HeaderInfo? get headerInfo => _headerInfo;
-
-  /// Sets the [HeaderInfo] and resolves the final filename.
-  ///
-  /// This logic handles merging user-preferred filenames with server-suggested
-  /// extensions and ensures naming consistency.
-  set headerInfo(HeaderInfo info) {
-    _headerInfo = info;
-
-    String? resolvedName;
-
-    if (!config.isFilenameSet) {
-      // If user hasn't provided a filename, try header info filename
-      resolvedName = info.filename;
-    } else {
-      // User provided a filename, let's handle the extensions
-      resolvedName = config.filename;
-
-      final String userExt = p.extension(resolvedName) ?? "";
-      final String headerExt = info.fileExtension ?? "";
-
-      if (headerExt.isNotEmpty) {
-        if (userExt.isEmpty) {
-          // No extension in user provided filename, append header extension
-          resolvedName = "$resolvedName$headerExt";
-        } else if (config.preferResolvedExtension && userExt != headerExt) {
-          // User provided extension but flag says prefer resolved (append)
-          // e.g. demo.archive -> demo.archive.zip
-          resolvedName = "$resolvedName$headerExt";
-        }
-      }
-    }
-
-    if (resolvedName != null && resolvedName.isNotEmpty) {
-      config.filename = resolvedName;
-    }
-  }
-
   /// The resolved filename used for saving the download.
   String get filename => config.filename;
 
@@ -143,9 +140,7 @@ abstract class Downloader {
   String get absolutePath => config.absoluteFilename;
 
   /// The total size of the file in bytes, as reported by the server.
-  ///
-  /// Returns 0 if header info is not yet available.
-  int get fileSize => headerInfo?.fileSize.bytes ?? 0;
+  int get fileSize => headerInfo.fileSize.bytes;
 
   final Completer<void> _initCompleter = Completer<void>();
 
@@ -175,9 +170,6 @@ abstract class Downloader {
     await cleanup();
   }
 
-  /// Fetches metadata from the server using a HEAD (or fallback GET) request.
-  Future<void> tryHeadRequest();
-
   /// Hook that executes periodically based on [timerInterval].
   ///
   /// Concrete classes should use this to update UI, log progress, or perform
@@ -191,16 +183,14 @@ abstract class Downloader {
   ///
   /// Throws an exception if head request fails or file cannot be created.
   Future<void> init() async {
-    await tryHeadRequest();
-
     logBuffer.writeln(
       "Headers fetched successfully\n"
-      "Filename: ${headerInfo?.filename}\n"
-      "File Size: ${headerInfo?.fileSize.humanReadable}\n"
+      "Filename: ${headerInfo.filename}\n"
+      "File Size: ${headerInfo.fileSize.humanReadable}\n"
       "URL: $url",
     );
 
-    status = DownloadStatus(totalSize: headerInfo!.fileSize.bytes);
+    status = DownloadStatus(totalSize: headerInfo.fileSize.bytes);
 
     await _prepareFile();
 
@@ -226,9 +216,9 @@ abstract class Downloader {
       await file.parent.create(recursive: true);
     }
 
-    if (headerInfo?.fileSize.bytes == -1) {
+    if (headerInfo.fileSize.bytes == -1) {
       logBuffer.writeError(
-        "Cannot prepare file: unknown file size {${headerInfo?.fileSize.bytes}}, trying to proceed",
+        "Cannot prepare file: unknown file size {${headerInfo.fileSize.bytes}}, trying to proceed",
       );
       // we dont know the file size so we cant prepare but we wont stop
       // because the download can still go on
@@ -237,7 +227,7 @@ abstract class Downloader {
     }
 
     _raf = await file.open(mode: FileMode.writeOnly);
-    await _raf!.truncate(headerInfo!.fileSize.bytes);
+    await _raf!.truncate(headerInfo.fileSize.bytes);
   }
 
   /// Releases resources used by the downloader.
