@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:udm/downloader/downloader.dart';
-import 'package:udm/head_parser.dart';
+import 'package:udm/downloader/head_parser.dart';
 import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
-import 'package:udm/models/downloader_config.dart';
+import 'package:udm/downloader/models/downloader_config.dart';
 
 /// A single stream download class
 /// it extends the downloader class and implements the start method

@@ -1,11 +1,9 @@
 // demo url for testing
 import 'dart:io';
 
-import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
-import 'package:udm/models/downloader_config.dart';
-import 'package:udm/models/metrics_models.dart';
 import 'package:udm/helpers/path_helpers/path_helpers.dart';
+import 'package:udm/models/file_size.dart';
 
 const demoUrl =
     "https://drive.usercontent.google.com/download?id=1-hPM0AsfHY-8ZiiTx29PJoGEvz6tch7f&export=download&authuser=0&confirm=t&uuid=75bf507f-49fc-4d7c-bfe5-b6f0450aad20&at=ALBwUgkGsQqVRFNRfVS04eSsw_Uv:1777789454035";
@@ -187,34 +185,4 @@ Future<HeaderInfo> _fallbackGetHeader(
   }
 
   return info;
-}
-
-/// Utility class for representing and formatting file sizes.
-///
-/// **Why**: Simplifies conversion between bytes, KB, MB, and GB while providing
-/// a consistent human-readable string representation.
-class FileSize {
-  final int bytes;
-
-  const FileSize(this.bytes);
-
-  int get asKb => bytes ~/ 1024;
-  int get asMb => bytes ~/ (1024 * 1024);
-  int get asGb => bytes ~/ (1024 * 1024 * 1024);
-  int get asTb => bytes ~/ (1024 * 1024 * 1024 * 1024);
-  int get asPb => bytes ~/ (1024 * 1024 * 1024 * 1024 * 1024);
-
-  String get humanReadable {
-    if (bytes < 0) return "unknown size";
-
-    if (bytes >= 1 << 30) {
-      return '${(bytes / (1 << 30)).toStringAsFixed(2)} GB';
-    } else if (bytes >= 1 << 20) {
-      return '${(bytes / (1 << 20)).toStringAsFixed(2)} MB';
-    } else if (bytes >= 1 << 10) {
-      return '${(bytes / (1 << 10)).toStringAsFixed(2)} KB';
-    } else {
-      return '$bytes bytes';
-    }
-  }
 }

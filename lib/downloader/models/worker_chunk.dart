@@ -1,7 +1,8 @@
 import 'dart:isolate';
 
 import 'package:udm/helpers/extensions/int_extensions.dart';
-import 'package:udm/models/downloader_config.dart';
+import 'package:udm/downloader/models/downloader_config.dart';
+import 'package:udm/models/range.dart';
 
 /// The chunk will be in isolate so we need to pass the configs as a single object.
 class WorkerChunk {

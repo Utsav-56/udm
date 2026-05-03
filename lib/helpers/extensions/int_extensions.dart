@@ -1,34 +1,15 @@
 import 'package:udm/helpers/extensions/map_extension.dart';
-import 'package:udm/models/downloader_config.dart';
-import 'package:udm/models/metrics_models.dart';
-
-class Range {
-  final int start;
-  final int end;
-
-  Range(this.start, this.end);
-  int get size => end - start + 1;
-
-  Map<String, int> toMap() => {"start": start, "end": end, "size": size};
-
-  factory Range.fromMap(Map<String, int> map) {
-    map.ensureKeyExists([
-      "start",
-      "end",
-    ], "Cannot create a range from map because {{key}} is missing");
-    return Range(map["start"]!, map["end"]!);
-  }
-
-  String get asRangeHeader => 'bytes=$start-$end';
-}
+import 'package:udm/downloader/models/downloader_config.dart';
+import 'package:udm/models/file_size.dart';
+import 'package:udm/models/range.dart';
 
 extension IntExtensions on int {
   FileSize get asFileSize => FileSize(this);
-  int get kb => this * 1024;
-  int get mb => this * 1024 * 1024;
-  int get gb => this * 1024 * 1024 * 1024;
-  int get tb => this * 1024 * 1024 * 1024 * 1024;
-  int get pb => this * 1024 * 1024 * 1024 * 1024 * 1024;
+  int get askb => this * 1024;
+  int get asmb => this * 1024 * 1024;
+  int get asgb => this * 1024 * 1024 * 1024;
+  int get astb => this * 1024 * 1024 * 1024 * 1024;
+  int get aspb => this * 1024 * 1024 * 1024 * 1024 * 1024;
 
   /// equally divides the int into [parts] number of parts and returns the value of each part
   /// returns a list of ints where each int is the value of each part
@@ -57,24 +38,24 @@ extension IntExtensions on int {
 
 extension ReadableSpeedHelper on num {
   String get humanReadableSpeed {
-    if (this >= 1.gb) {
-      return "${(this / 1.gb).toStringAsFixed(2)} GB/s";
-    } else if (this >= 1.mb) {
-      return "${(this / 1.mb).toStringAsFixed(2)} MB/s";
-    } else if (this >= 1.kb) {
-      return "${(this / 1.kb).toStringAsFixed(2)} KB/s";
+    if (this >= 1.asgb) {
+      return "${(this / 1.asgb).toStringAsFixed(2)} GB/s";
+    } else if (this >= 1.asmb) {
+      return "${(this / 1.asmb).toStringAsFixed(2)} MB/s";
+    } else if (this >= 1.askb) {
+      return "${(this / 1.askb).toStringAsFixed(2)} KB/s";
     } else {
       return "${this.toStringAsFixed(2)} B/s";
     }
   }
 
   String get asSuitableSizeUnit {
-    if (this >= 1.gb) {
-      return "${(this / 1.gb).toStringAsFixed(2)} GB";
-    } else if (this >= 1.mb) {
-      return "${(this / 1.mb).toStringAsFixed(2)} MB";
-    } else if (this >= 1.kb) {
-      return "${(this / 1.kb).toStringAsFixed(2)} KB";
+    if (this >= 1.asgb) {
+      return "${(this / 1.asgb).toStringAsFixed(2)} GB";
+    } else if (this >= 1.asmb) {
+      return "${(this / 1.asmb).toStringAsFixed(2)} MB";
+    } else if (this >= 1.askb) {
+      return "${(this / 1.askb).toStringAsFixed(2)} KB";
     } else {
       return "${this.toStringAsFixed(2)} B";
     }

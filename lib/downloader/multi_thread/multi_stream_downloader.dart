@@ -4,11 +4,12 @@ import 'dart:isolate';
 import 'dart:math';
 
 import 'package:udm/downloader/downloader.dart';
-import 'package:udm/downloader/multi_thread_helpers/messenger.dart';
-import 'package:udm/downloader/multi_thread_helpers/worker_chunk.dart';
-import 'package:udm/head_parser.dart';
+import 'package:udm/downloader/models/download_status.dart';
+import 'package:udm/downloader/models/messenger.dart';
+import 'package:udm/downloader/models/worker_chunk.dart';
+import 'package:udm/downloader/head_parser.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
-import 'package:udm/models/metrics_models.dart';
+import 'package:udm/models/range.dart';
 
 /// Implementation of [Downloader] that uses multiple concurrent streams to fetch data.
 ///

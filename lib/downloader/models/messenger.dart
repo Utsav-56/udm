@@ -1,8 +1,10 @@
 import 'dart:isolate';
 
 import 'package:udm/downloader/downloader.dart';
+import 'package:udm/downloader/models/download_status.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/helpers/extensions/map_extension.dart';
+import 'package:udm/models/range.dart';
 
 enum WorkerMessageType { progress, error, signal, handshake }
 

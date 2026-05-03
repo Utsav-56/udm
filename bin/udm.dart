@@ -3,11 +3,11 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:udm/downloader.dart';
 import 'package:udm/downloader/downloader.dart';
-import 'package:udm/downloader/multi_stream_download.dart';
-import 'package:udm/downloader/single_stream_downloader.dart';
-import 'package:udm/head_parser.dart';
+import 'package:udm/downloader/multi_thread/multi_stream_downloader.dart';
+import 'package:udm/downloader/single_thread/single_stream_downloader.dart';
+import 'package:udm/downloader/head_parser.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
-import 'package:udm/models/downloader_config.dart';
+import 'package:udm/downloader/models/downloader_config.dart';
 
 const String version = '0.0.1';
 
