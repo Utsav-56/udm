@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:udm/helpers/path_helpers/path_helpers.dart';
+import 'package:udm/models/saveable_config.dart';
 
 /// Download type specifies what method of download the downloader should use
 ///
@@ -22,12 +23,8 @@ enum DownloadType {
 
 /// The config needed for downloader to download the file.
 /// It includes all the configs or that the downloader needs to set before starting the download
-class DownloaderConfig {
-  /// the url of the file to be downloaded
-  ///
-  /// it is required and cannot be empty
-  late final Uri url;
-
+class DownloaderConfig extends SaveableConfig<DownloaderConfig>
+    implements Savable<DownloaderConfig> {
   /// the directory where the downloaded file will be saved
   /// If not provided then it will use the default download directory of the system or the current directory as fallback
   ///
@@ -70,7 +67,7 @@ class DownloaderConfig {
   /// while [verbose] controls all logs
   ///
   /// defaults to true
-  final bool showProgressInTerminal;
+  late final bool showProgressInTerminal;
 
   /// if this is true then we will log every steps into the terminal
   ///
@@ -110,6 +107,12 @@ class DownloaderConfig {
   ///
   final String cookie;
 
+  /// if this is true then we will append the extension from the header info to the filename
+  /// even if the filename already has an extension
+  ///
+  /// defaults to true
+  final bool preferResolvedExtension;
+
   /// in each instance creation this will be initialized with the saved config or user preference
   ///
   /// any changes made to the config file afterwards is not reflected in the existing instances.
@@ -119,14 +122,15 @@ class DownloaderConfig {
   ///
   /// it will return the resolved filename which is either from the user preference or from the header info or from the url
   /// it can stay null in that  case the downloader determines either by the header or use default name
-  String get filename {
-    // If user provided a name, use it.
-    // Otherwise check saved.
-    // Otherwise hard-coded.
-    return _explicitFilename ??
-        _userPreference['preferredFilename'] ??
-        "UDM-Downloaded-File";
+  String? get _filename {
+    return _explicitFilename ?? _userPreference['preferredFilename'];
   }
+
+  /// returns true if the filename is set by the user
+  bool get isFilenameSet => _filename != null && _filename!.isNotEmpty;
+
+  /// the final filename to be used
+  String get filename => _filename ?? "UDM-Downloaded-File";
 
   /// the setter for the filename
   ///
@@ -158,8 +162,6 @@ class DownloaderConfig {
   }
 
   DownloaderConfig({
-    required String fileUrl,
-
     /// the path where the file will be saved, if not given then we will try to get from preference or default dir
     String? saveDir,
 
@@ -168,21 +170,25 @@ class DownloaderConfig {
     this.verbose = false,
     this.downloadType = DownloadType.smart,
     this.progressSyncInterval = 500,
-    this.showProgressInTerminal = true,
+    bool? showProgressInTerminal,
     this.headers,
     this.cookie = "",
     this.threadCount = 10,
     this.isVerboseMode = false,
+    this.preferResolvedExtension = true,
   }) {
-    if (fileUrl.isEmpty) {
-      throw ArgumentError("URL cannot be empty");
-    }
-    url = Uri.parse(fileUrl);
     populateConfigs();
 
     //Assign "User" Layer (this overrides the saved layer in getters)
     this.outputDir = saveDir;
     this.filename = filename;
+
+    /// if the stdout has no terminal connected then we will not be showing the progress
+    if (stdout.hasTerminal) {
+      this.showProgressInTerminal = showProgressInTerminal ?? true;
+    } else {
+      this.showProgressInTerminal = false;
+    }
   }
 
   /// finds the path to the config file
@@ -197,15 +203,11 @@ class DownloaderConfig {
   /// reads the config file and populates the _userPreference
   ///
   void populateConfigs() {
-    final file = File(configPath);
-    if (file.existsSync()) {
-      try {
-        final contents = file.readAsStringSync();
-        _userPreference = jsonDecode(contents) as Map<String, dynamic>;
-      } catch (e) {
-        // Handle corrupt JSON
-        _userPreference = {};
-      }
+    try {
+      _userPreference = readSavedConfig();
+    } catch (e) {
+      print("Error while reading config file: $e");
+      _userPreference = {};
     }
   }
 
@@ -244,9 +246,9 @@ class DownloaderConfig {
     Map<String, String>? headers,
     String? cookie,
     int? threadCount,
+    bool? preferResolvedExtension,
   }) {
     return DownloaderConfig(
-      fileUrl: fileUrl ?? this.url.toString(),
       saveDir: saveDir ?? this.outputDir,
       filename: filename ?? this.filename,
       downloadType: downloadType ?? this.downloadType,
@@ -256,6 +258,65 @@ class DownloaderConfig {
       headers: headers ?? this.headers,
       cookie: cookie ?? this.cookie,
       threadCount: threadCount ?? this.threadCount,
+      preferResolvedExtension: preferResolvedExtension ?? this.preferResolvedExtension,
     );
+  }
+
+  /// this instance is used in case there is no other config available or user has not set any config
+  /// [Downloader] class uses this instance if there is no config provided for it
+  static final DownloaderConfig defaultInstance = DownloaderConfig(
+    saveDir: p.getDownloadDir(),
+    filename: "UDM-Downloaded-File",
+    downloadType: DownloadType.smart,
+    progressSyncInterval: 500,
+    isVerboseMode: false,
+    showProgressInTerminal: true,
+    headers: null,
+    cookie: "",
+    threadCount: 10,
+    preferResolvedExtension: true,
+  );
+
+  @override
+  DownloaderConfig get defaultValue => defaultInstance;
+
+  @override
+  String get configFilePath => p.join(p.getHomeDir(), ".udm", "downloader_config.json");
+
+  @override
+  DownloaderConfig fromJson(Map<String, dynamic> json) {
+    return DownloaderConfig(
+      saveDir: json['saveDir'],
+      filename: json['filename'],
+      downloadType: DownloadType.values[json['downloadType']],
+      progressSyncInterval: json['progressSyncInterval'],
+      isVerboseMode: json['isVerboseMode'],
+      showProgressInTerminal: json['showProgressInTerminal'],
+      headers: json['headers'],
+      cookie: json['cookie'],
+      threadCount: json['threadCount'],
+      preferResolvedExtension: json['preferResolvedExtension'] ?? true,
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'saveDir': outputDir,
+      'filename': filename,
+      'downloadType': downloadType.index,
+      'progressSyncInterval': progressSyncInterval,
+      'isVerboseMode': isVerboseMode,
+      'showProgressInTerminal': showProgressInTerminal,
+      'headers': headers,
+      'cookie': cookie,
+      'threadCount': threadCount,
+      'preferResolvedExtension': preferResolvedExtension,
+    };
+  }
+
+  @override
+  String tojsonString() {
+    return const JsonEncoder.withIndent("    ").convert(toJson());
   }
 }

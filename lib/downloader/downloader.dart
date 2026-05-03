@@ -5,6 +5,7 @@ import 'package:udm/head_parser.dart';
 import 'package:udm/helpers/extensions/date_extensions.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/helpers/extensions/map_extension.dart';
+import 'package:udm/helpers/path_helpers/path_helpers.dart';
 import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
 import 'package:udm/models/downloader_config.dart';
 
@@ -14,16 +15,21 @@ import 'package:udm/models/downloader_config.dart';
 /// The blueprint for all Downloader implementations.
 /// This handles the state management and provides a stream for progress updates.
 abstract class Downloader {
-  final DownloaderConfig config;
+  late final DownloaderConfig config;
 
   // State and progress Tracking
   late final DownloadStatus status;
 
-  Downloader({required this.config})
-    : logBuffer = LogBuffer(showProgressInTerminal: config.showProgressInTerminal);
+  late final Uri url;
+
+  Downloader({required String url, DownloaderConfig? config}) {
+    this.url = Uri.parse(url);
+    this.config = config ?? DownloaderConfig.defaultInstance;
+    logBuffer = LogBuffer(showProgressInTerminal: this.config.showProgressInTerminal);
+  }
 
   /// a buffer to store the terminal buffer
-  final LogBuffer logBuffer;
+  late final LogBuffer logBuffer;
 
   /// The external API to listen for progress updates.
   Stream<DownloadStatus> get progressStream => status.stream;
@@ -41,10 +47,35 @@ abstract class Downloader {
   // save path helpers
   HeaderInfo? _headerInfo;
   HeaderInfo? get headerInfo => _headerInfo;
-  set headerInfo(HeaderInfo headerInfo) {
-    _headerInfo = headerInfo;
-    if (config.filename.isEmpty) {
-      config.filename = headerInfo.filename ?? "Udm-downloaded-file";
+  set headerInfo(HeaderInfo info) {
+    _headerInfo = info;
+
+    String? resolvedName;
+
+    if (!config.isFilenameSet) {
+      // If user hasn't provided a filename, try header info filename
+      resolvedName = info.filename;
+    } else {
+      // User provided a filename, let's handle the extensions
+      resolvedName = config.filename;
+
+      final String userExt = p.extension(resolvedName) ?? "";
+      final String headerExt = info.fileExtension ?? "";
+
+      if (headerExt.isNotEmpty) {
+        if (userExt.isEmpty) {
+          // No extension in user provided filename, append header extension
+          resolvedName = "$resolvedName$headerExt";
+        } else if (config.preferResolvedExtension && userExt != headerExt) {
+          // User provided extension but flag says prefer resolved (append)
+          // e.g. demo.archive -> demo.archive.zip
+          resolvedName = "$resolvedName$headerExt";
+        }
+      }
+    }
+
+    if (resolvedName != null && resolvedName.isNotEmpty) {
+      config.filename = resolvedName;
     }
   }
 
@@ -85,7 +116,7 @@ abstract class Downloader {
       "Headers fetched successfully\n"
       "Filename: ${headerInfo?.filename}\n"
       "File Size: ${headerInfo?.fileSize.humanReadable}\n"
-      "URL: ${config.url}",
+      "URL: $url",
     );
 
     status = DownloadStatus(totalSize: headerInfo!.fileSize.bytes);

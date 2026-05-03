@@ -9,11 +9,13 @@ class WorkerChunk {
   final Range range;
   final DownloaderConfig config;
   final SendPort sendPort;
+  final Uri url;
 
   const WorkerChunk({
     required this.index,
     required this.range,
     required this.config,
+    required this.url,
     required this.sendPort,
   });
 
@@ -33,11 +35,13 @@ class WorkerChunk {
     int? index,
     DownloaderConfig? config,
     SendPort? sendPort,
+    Uri? url,
   }) {
     return WorkerChunk(
       index: index ?? this.index,
       range: newRange ?? this.range,
       config: config ?? this.config,
+      url: url ?? this.url,
       sendPort: sendPort ?? this.sendPort,
     );
   }

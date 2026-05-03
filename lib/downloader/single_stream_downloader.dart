@@ -4,12 +4,14 @@ import 'dart:io';
 import 'package:udm/downloader/downloader.dart';
 import 'package:udm/head_parser.dart';
 import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
+import 'package:udm/models/downloader_config.dart';
 
 /// A single stream download class
 /// it extends the downloader class and implements the start method
 
 class SingleStreamDownloader extends Downloader {
-  SingleStreamDownloader({required super.config});
+  SingleStreamDownloader({required super.url, DownloaderConfig? config})
+    : super(config: config);
 
   // We can reuse the same client in the single stream so we create a shared client instance
   final HttpClient _client = HttpClient()
@@ -19,7 +21,7 @@ class SingleStreamDownloader extends Downloader {
 
   @override
   Future<void> tryHeadRequest() async {
-    headerInfo = await sendHeadRequest(config.url, _client, logBuffer);
+    headerInfo = await sendHeadRequest(url, _client, logBuffer);
   }
 
   @override
@@ -45,7 +47,7 @@ class SingleStreamDownloader extends Downloader {
     logBuffer.cleanln(5); // 5 for those header info lines
     logBuffer.clean();
 
-    final request = await _client.getUrl(config.url);
+    final request = await _client.getUrl(url);
     final response = await request.close();
 
     if (response.statusCode != HttpStatus.ok) {

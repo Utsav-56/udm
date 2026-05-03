@@ -30,13 +30,12 @@ void printUsage(ArgParser argParser) {
 
 void main(List<String> arguments) {
   final config = DownloaderConfig(
-    fileUrl: demoUrl,
     filename: "demo-file.zip",
     saveDir: Directory.current.path,
-    verbose: true,
+    showProgressInTerminal: false,
   );
 
-  final downloader = MultiStreamDownload(config: config);
+  final downloader = MultiStreamDownload(url: demoUrl);
 
   // 1001.divideIntoParts(8).debug(expectedTotal: 1001);
 

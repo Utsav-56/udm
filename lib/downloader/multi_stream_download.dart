@@ -11,7 +11,7 @@ import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/models/metrics_models.dart';
 
 class MultiStreamDownload extends Downloader {
-  MultiStreamDownload({required super.config});
+  MultiStreamDownload({required super.url, super.config});
 
   int threadCounnt = 8; // for now we hardcode this in future we use preference
 
@@ -40,6 +40,7 @@ class MultiStreamDownload extends Downloader {
       _workerChunks[i] = WorkerChunk(
         index: i,
         range: range,
+        url: url,
         config: config,
         sendPort: _receivePort.sendPort,
       );
@@ -49,7 +50,7 @@ class MultiStreamDownload extends Downloader {
 
   @override
   Future<void> tryHeadRequest() async {
-    headerInfo = await sendHeadRequest(config.url, null, logBuffer);
+    headerInfo = await sendHeadRequest(url, null, logBuffer);
   }
 
   // isolate only sends error message and progress message and a handshake
@@ -223,7 +224,7 @@ class ChunkDownloader {
 
         status.markStarted();
 
-        final request = await client.getUrl(worker.config.url);
+        final request = await client.getUrl(worker.url);
         request.headers.add(HttpHeaders.rangeHeader, currentRange.asRangeHeader);
         final response = await request.close();
 

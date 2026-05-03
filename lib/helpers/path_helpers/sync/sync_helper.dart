@@ -678,4 +678,30 @@ mixin PathHelper {
       return null;
     }
   }
+
+  String? readAsString(String path) {
+    try {
+      final file = File(path);
+      if (file.existsSync()) {
+        return file.readAsStringSync();
+      }
+      return null;
+    } catch (e) {
+      _handleError(e, "Path.readAsString");
+      return null;
+    }
+  }
+
+  /// Writes a string to a file.
+  bool writeAsString(String path, String content, {bool append = false}) {
+    try {
+      final file = File(path);
+      if (!file.existsSync()) file.createSync(recursive: true);
+      file.writeAsStringSync(content, mode: append ? FileMode.append : FileMode.write);
+      return true;
+    } catch (e) {
+      _handleError(e, "Path.writeAsString");
+      return false;
+    }
+  }
 }
