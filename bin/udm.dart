@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:udm/downloader.dart';
 import 'package:udm/downloader/downloader.dart';
+import 'package:udm/downloader/multi_stream_download.dart';
 import 'package:udm/downloader/single_stream_downloader.dart';
 import 'package:udm/head_parser.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
@@ -35,7 +36,7 @@ void main(List<String> arguments) {
     verbose: true,
   );
 
-  final downloader = SingleStreamDownloader(config: config);
+  final downloader = MultiStreamDownload(config: config);
 
   // 1001.divideIntoParts(8).debug(expectedTotal: 1001);
 

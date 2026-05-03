@@ -1,3 +1,4 @@
+import 'package:udm/helpers/extensions/map_extension.dart';
 import 'package:udm/models/downloader_config.dart';
 import 'package:udm/models/metrics_models.dart';
 
@@ -6,46 +7,19 @@ class Range {
   final int end;
 
   Range(this.start, this.end);
-
   int get size => end - start + 1;
 
-  @override
-  String toString() => '$start-$end';
+  Map<String, int> toMap() => {"start": start, "end": end, "size": size};
 
-  String get headerValue => 'bytes=$start-$end';
-}
-
-extension DebugRange on List<Range> {
-  void debug({int? expectedTotal}) {
-    StringBuffer buffer = StringBuffer();
-
-    if (expectedTotal != null) {
-      /// the last end range is always the total so we dont need to calculate the total we can just get the end of the last range
-      int total = this.isNotEmpty ? this.last.end : 0;
-
-      buffer.writeln('Expected Total: ${expectedTotal} bytes');
-      buffer.writeln('Calculated Total: ${total} bytes');
-      buffer.writeln('Difference: ${total - expectedTotal} bytes\n');
-    }
-
-    for (int i = 0; i < this.length; i++) {
-      buffer.writeln('Range ${i + 1}:');
-      buffer.writeln('    Start: ${this[i].start}');
-      buffer.writeln('    End: ${this[i].end}');
-      buffer.writeln('    Size: ${this[i].size} bytes \n');
-    }
-
-    print("""
-======================= Range Debug ================================
-Total Ranges: ${this.length}
-
-
-${buffer.toString()}
-====================================================================
-
-""");
-    buffer.clear();
+  factory Range.fromMap(Map<String, int> map) {
+    map.ensureKeyExists([
+      "start",
+      "end",
+    ], "Cannot create a range from map because {{key}} is missing");
+    return Range(map["start"]!, map["end"]!);
   }
+
+  String get asRangeHeader => 'bytes=$start-$end';
 }
 
 extension IntExtensions on int {

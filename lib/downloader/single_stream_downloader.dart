@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:udm/downloader/downloader.dart';
@@ -18,7 +19,21 @@ class SingleStreamDownloader extends Downloader {
 
   @override
   Future<void> tryHeadRequest() async {
-    headerInfo = await sendHeadRequest(_client, config.url, logBuffer);
+    headerInfo = await sendHeadRequest(config.url, _client, logBuffer);
+  }
+
+  @override
+  Future<void> timerFunction(Timer timer) async {
+    status.timerTick(timerInterval);
+
+    if (stdout.hasTerminal) {
+      if (status.isCompleted) {
+        showFinalProgress();
+        await cleanup();
+      } else {
+        showProgress();
+      }
+    }
   }
 
   @override
@@ -49,7 +64,7 @@ class SingleStreamDownloader extends Downloader {
       }
 
       await raf.writeFrom(chunks);
-      status.update(chunks.length);
+      status.increment(chunks.length);
     }
 
     status.markCompleted();
@@ -75,7 +90,7 @@ class SingleStreamDownloader extends Downloader {
     buffer.writeln(status.makeProgressBar());
 
     // Line 3: Controls menu
-    buffer.write("Controls: [p] Pause | [r] Resume | [c] Cancel");
+    buffer.write("\nControls: [p] Pause | [r] Resume | [c] Cancel");
 
     final output = buffer.toString();
     logBuffer.cleanLastLinesAndPrint(output);

@@ -8,7 +8,7 @@ import 'package:udm/models/metrics_models.dart';
 import 'package:udm/helpers/path_helpers/path_helpers.dart';
 
 const demoUrl =
-    "https://drive.usercontent.google.com/download?id=1d1EBTcLHYQiv93O4nyBBjbK_Wc-2f5qX&export=download&authuser=0&confirm=t&uuid=dd710d80-2b80-47e6-9768-41730efed5c1&at=ALBwUgkj_7i0p2ZZsknUP43DWlJS:1776241352545";
+    "https://drive.usercontent.google.com/download?id=1-hPM0AsfHY-8ZiiTx29PJoGEvz6tch7f&export=download&authuser=0&confirm=t&uuid=75bf507f-49fc-4d7c-bfe5-b6f0450aad20&at=ALBwUgkGsQqVRFNRfVS04eSsw_Uv:1777789454035";
 
 class HeaderInfo {
   /// The minimum size required to bother with multi-threading (default 5MB)
@@ -78,11 +78,26 @@ class HeaderInfo {
 }
 
 Future<HeaderInfo> sendHeadRequest(
-  HttpClient client,
   Uri url, [
+  HttpClient? client,
   LogBuffer? logBuffer,
 ]) async {
   logBuffer ??= LogBuffer();
+
+  // track if the client was self made or from param
+  // in case of self made we dispose the client when request is finished
+  bool isClientSelfMade = false;
+  if (client == null) {
+    client = HttpClient()
+      ..maxConnectionsPerHost = 3
+      ..connectionTimeout = const Duration(seconds: 10)
+      ..idleTimeout = const Duration(seconds: 5);
+
+    isClientSelfMade = true;
+  }
+
+  HeaderInfo info;
+
   try {
     logBuffer.cleanLastLinesAndPrint("Sending head request to $url");
 
@@ -103,21 +118,29 @@ Future<HeaderInfo> sendHeadRequest(
 
       // Fallback for servers that hate HEAD requests:
       // Try a GET but only ask for the first byte.
-      return await _fallbackGetHeader(client, url);
+      return await _fallbackGetHeader(url, client, logBuffer);
     }
 
     return HeaderInfo.fromResponse(response, url);
   } catch (e) {
     logBuffer.writeError("Caught error when sending normal head request:: $e");
     // If anything fails, try the fallback before giving up
-    return await _fallbackGetHeader(client, url);
+    return await _fallbackGetHeader(url, client, logBuffer);
+  } finally {
+    if (isClientSelfMade) {
+      try {
+        client.close();
+      } catch (e) {
+        logBuffer.writeError("Failed to close client");
+      }
+    }
   }
 }
 
 /// Fallback using a partial GET request (0-0)
 Future<HeaderInfo> _fallbackGetHeader(
-  HttpClient client,
-  Uri url, [
+  Uri url,
+  HttpClient client, [
   LogBuffer? logBuffer,
 ]) async {
   logBuffer ??= LogBuffer();

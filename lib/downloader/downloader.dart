@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:udm/head_parser.dart';
 import 'package:udm/helpers/extensions/date_extensions.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
+import 'package:udm/helpers/extensions/map_extension.dart';
 import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
 import 'package:udm/models/downloader_config.dart';
 
@@ -36,7 +37,7 @@ abstract class Downloader {
   bool get isCancelled => status.isCancelled;
   bool get isCompleted => status.isCompleted;
   bool get isDownloading => status.isDownloading;
-  bool get isInitialising => status.isInit;
+  bool get isInitialising => status.isInitialising;
 
   @override
   bool get isVerboseMode => config.verbose;
@@ -53,6 +54,7 @@ abstract class Downloader {
 
   String get filename => config.filename!;
   String get absolutePath => config.absoluteFilename;
+  int get fileSize => headerInfo?.fileSize.bytes ?? 0;
 
   final Completer<void> _initCompleter = Completer<void>();
 
@@ -75,6 +77,11 @@ abstract class Downloader {
 
   Future<void> tryHeadRequest();
 
+  /// must be implemented
+  /// this will fire every timerInterval
+  /// used for printing log, or anything you want
+  Future<void> timerFunction(Timer timer);
+
   Future<void> init() async {
     await tryHeadRequest();
 
@@ -89,17 +96,7 @@ abstract class Downloader {
 
     await _prepareFile();
 
-    _timer = Timer.periodic(timerInterval, (_) async {
-      status.timerTick(timerInterval);
-      if (stdout.hasTerminal) {
-        if (status.isCompleted) {
-          showFinalProgress();
-          await cleanup();
-        } else {
-          showProgress();
-        }
-      }
-    });
+    _timer = Timer.periodic(timerInterval, timerFunction);
 
     _initCompleter.complete();
   }
@@ -146,6 +143,85 @@ enum DownloadState { initial, downloading, paused, cancelled, completed }
 /// and the speed of the download
 ///
 class DownloadStatus {
+  DownloadStatus({required this.totalSize, int? id}) {
+    this.id = id ?? DateTime.now().millisecond.toInt();
+  }
+
+  factory DownloadStatus.fromMap(Map<String, dynamic> map) {
+    map.ensureKeyExists(["totalSize", "id", "state"]);
+    return DownloadStatus(totalSize: map["totalSize"], id: map["id"])
+      ..totalBytesDownloaded = map["totalBytesDownloaded"] ?? 0
+      ..state = DownloadState.values[map["state"]];
+  }
+
+  /// helper to convert the current state to a map
+  /// we do not include all fields as all other fields are just derived from `totalBytesDownloaded` and `state`
+  ///
+  Map<String, dynamic> toMap() {
+    return {
+      "id": id,
+      "totalBytesDownloaded": totalBytesDownloaded,
+      "state": state.index,
+      "totalSize": totalSize,
+    };
+  }
+
+  void updateFromMap(Map<String, dynamic> map) {
+    map.ensureKeyExists([
+      "id",
+      "state",
+      "totalBytesDownloaded",
+    ], "Cannot update the status from map because {{key}} is missing");
+    totalBytesDownloaded = map["totalBytesDownloaded"];
+    final newState = DownloadState.values[map["state"]];
+
+    if (newState != state) {
+      if (newState == DownloadState.completed) {
+        markCompleted();
+      } else if (newState == DownloadState.paused) {
+        markPaused();
+      } else if (newState == DownloadState.cancelled) {
+        markCancelled();
+      } else {
+        updateState(newState);
+      }
+    }
+
+    if (map.containsKey("bytesPerSecond")) {
+      bytesPerSecond = map["bytesPerSecond"];
+    }
+  }
+
+  /// updates the status from other status
+  /// similar to the .copyWith  in flutter theme class
+  void updateFromStatus(DownloadStatus status) {
+    if (id != status.id) {
+      throw Exception(
+        "Status IDs do not match, trying to update this(${this.id}) with ${status.id}",
+      );
+    }
+
+    // we only allow the progress from the same id to be added
+    // we give full faith to the new status and blindly accept it and give pririty to that
+    totalBytesDownloaded = status.totalBytesDownloaded;
+
+    if (status.state != state) {
+      if (status.state == DownloadState.completed) {
+        markCompleted();
+      } else if (status.state == DownloadState.paused) {
+        markPaused();
+      } else if (status.state == DownloadState.cancelled) {
+        markCancelled();
+      } else {
+        updateState(status.state);
+      }
+    }
+
+    // bytesPerSecond is NOT updated here because it's usually calculated by the timer in the receiver isolate
+  }
+
+  late final int id; // to identify the stream
+
   final int totalSize; // the final size a chunk is assigned to download
   int totalBytesDownloaded = 0; // the overall progress of download
   int _previousBytesDownloaded = 0; // field needed for calculating speed in timer tick
@@ -188,7 +264,7 @@ class DownloadStatus {
   bool get isCancelled => state == DownloadState.cancelled;
   bool get isCompleted => state == DownloadState.completed;
   bool get isDownloading => state == DownloadState.downloading;
-  bool get isInit => state == DownloadState.initial;
+  bool get isInitialising => state == DownloadState.initial;
 
   /// state mutator
   void markPaused() {
@@ -282,9 +358,8 @@ class DownloadStatus {
     return secondsLeft.asReadableTimeUnit;
   }
 
-  DownloadStatus({required this.totalSize});
-
-  void update(int bytesReceived) {
+  /// call this when you receive a chunk of data
+  void increment(int bytesReceived) {
     totalBytesDownloaded += bytesReceived;
   }
 
@@ -298,8 +373,8 @@ class DownloadStatus {
     // Normalize to bytes per second: (bytes / ms) * 1000
     bytesPerSecond = (delta / interval.inMilliseconds) * 1000;
 
-    if (totalBytesDownloaded == totalSize) {
-      updateState(DownloadState.completed);
+    if (totalBytesDownloaded >= totalSize && totalSize > 0) {
+      markCompleted();
     }
 
     _notify();
@@ -312,21 +387,21 @@ class DownloadStatus {
   }
 
   /// unified method for showing progress
-  String showProgress() {
-    if (totalBytesDownloaded == totalSize) {
-      updateState(DownloadState.completed);
+  String makeProgressBar({int? barLength, int? preferredWidth}) {
+    if (totalBytesDownloaded >= totalSize && totalSize > 0) {
+      markCompleted();
     }
     switch (state) {
       case DownloadState.initial:
         return "Initiating download...";
       case DownloadState.downloading:
-        return makeProgressBar();
+        return _makeDownloadingBar(barLength: barLength, preferredWidth: preferredWidth);
       case DownloadState.paused:
-        return makePausedBar();
+        return _makePausedBar(barLength: barLength, preferredWidth: preferredWidth);
       case DownloadState.cancelled:
-        return makeCancelledBar();
+        return _makeCancelledBar(barLength: barLength, preferredWidth: preferredWidth);
       case DownloadState.completed:
-        return makeCompletedBar();
+        return _makeCompletedBar(barLength: barLength, preferredWidth: preferredWidth);
     }
   }
 
@@ -335,10 +410,10 @@ class DownloadStatus {
   /// makes following bar
   /// [=============== Paused ================]
   /// Revised internal helper to ensure bars are always cleared and consistent
-  String _makeTextedBar({required String text, int? preferredWidth}) {
+  String _makeTextedBar({required String text, int? preferredWidth, int? barLength}) {
     final width = preferredWidth ?? (stdout.hasTerminal ? stdout.terminalColumns : 80);
     // Subtract 2 for the brackets []
-    final barLength = (width - 2).clamp(10, 200);
+    barLength = barLength ?? (width - 2).clamp(10, 200);
 
     if (text.length >= barLength) return "[${text.substring(0, barLength)}]";
 
@@ -351,14 +426,26 @@ class DownloadStatus {
     return "[$bar]";
   }
 
-  String makePausedBar() => _makeTextedBar(text: " Paused ");
-  String makeCancelledBar() => _makeTextedBar(text: " Cancelled ");
-  String makeCompletedBar() => _makeTextedBar(text: " Completed ");
+  String _makePausedBar({int? barLength, int? preferredWidth}) => _makeTextedBar(
+    text: " Paused ",
+    barLength: barLength,
+    preferredWidth: preferredWidth,
+  );
+  String _makeCancelledBar({int? barLength, int? preferredWidth}) => _makeTextedBar(
+    text: " Cancelled ",
+    barLength: barLength,
+    preferredWidth: preferredWidth,
+  );
+  String _makeCompletedBar({int? barLength, int? preferredWidth}) => _makeTextedBar(
+    text: " Completed ",
+    barLength: barLength,
+    preferredWidth: preferredWidth,
+  );
 
   /// makes a bar such as
   /// [██████----------] 30% | Speed: 500 KB/s | ETA: 1m 20s left
-  String makeProgressBar({int? barLength, int? preferredWidth}) {
-    if (isInit) {
+  String _makeDownloadingBar({int? barLength, int? preferredWidth}) {
+    if (isInitialising) {
       return "Initiating download..."; // we havent started download yet
     }
 
@@ -401,5 +488,43 @@ class DownloadStatus {
 
   Future<void> dispose() async {
     await _controller.close();
+  }
+}
+
+/// these methods are supposed to be helpers for multiple isolates
+/// useful for isolate workers to manage all at once
+extension StatusHelper on List<DownloadStatus> {
+  void tickAll(Duration interval) {
+    for (var status in this) {
+      status.timerTick(interval);
+    }
+  }
+
+  /// cancels all the statuses in the list
+  /// if status working in isolate they will also be cancelled
+  void cancelAll() {
+    for (var status in this) {
+      status.updateState(DownloadState.cancelled);
+    }
+  }
+
+  ///disposes all the statuses in the list
+  /// it also waits for the stream to complete
+  Future<void> disposeAll() async {
+    for (var status in this) {
+      await status.dispose();
+    }
+  }
+
+  /// makes progress strings for all the statuses
+  /// can be used to display progress of all the workers in the main thread
+  List<String> makeProgressAll({int? barLength, int? preferredWidth}) {
+    final List<String> progressList = [];
+    for (var status in this) {
+      progressList.add(
+        status.makeProgressBar(barLength: barLength, preferredWidth: preferredWidth),
+      );
+    }
+    return progressList;
   }
 }
