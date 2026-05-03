@@ -10,6 +10,11 @@ import 'package:udm/head_parser.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/models/metrics_models.dart';
 
+/// Implementation of [Downloader] that uses multiple concurrent streams to fetch data.
+///
+/// **Why**: Significantly increases download speeds by bypassing single-connection limits
+/// and utilizing the full available bandwidth across multiple TCP connections.
+/// **How**: Spawns multiple isolates ([downloadWorker]) and coordinates their progress.
 class MultiStreamDownload extends Downloader {
   MultiStreamDownload({required super.url, super.config});
 
@@ -193,6 +198,11 @@ class ChunkCallbacks {
   });
 }
 
+/// Orchestrates the download of a specific file range.
+///
+/// **Why**: Encapsulates the logic for HTTP requests, file I/O, and retry mechanisms
+/// for a single thread/chunk, keeping [MultiStreamDownload] focused on coordination.
+/// **How**: Managed by a [downloadWorker] isolate.
 class ChunkDownloader {
   final WorkerChunk worker;
   final HttpClient client;
@@ -278,6 +288,11 @@ class ChunkDownloader {
 }
 
 /// the download worker isolate entry point
+/// The entry point for a dedicated download isolate.
+///
+/// **Why**: Offloads the computationally expensive network and file I/O operations
+/// from the main UI/CLI thread to prevent interface lagging.
+/// **How**: Spawned via [Isolate.spawn] with a [WorkerChunk] configuration.
 Future<void> downloadWorker(WorkerChunk worker) async {
   final client = HttpClient();
 

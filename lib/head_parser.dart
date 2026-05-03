@@ -10,6 +10,11 @@ import 'package:udm/helpers/path_helpers/path_helpers.dart';
 const demoUrl =
     "https://drive.usercontent.google.com/download?id=1-hPM0AsfHY-8ZiiTx29PJoGEvz6tch7f&export=download&authuser=0&confirm=t&uuid=75bf507f-49fc-4d7c-bfe5-b6f0450aad20&at=ALBwUgkGsQqVRFNRfVS04eSsw_Uv:1777789454035";
 
+/// Metadata container for remote file information retrieved via HTTP headers.
+///
+/// **Why**: Essential for determining if a download can be multi-threaded and for
+/// allocating disk space before the download begins.
+/// **How**: Generated via [sendHeadRequest] before initializing a [Downloader].
 class HeaderInfo {
   /// The minimum size required to bother with multi-threading (default 5MB)
   static const int minMultiStreamThreshold = 5 * 1024 * 1024;
@@ -77,6 +82,11 @@ class HeaderInfo {
       "File: ${filename ?? 'Unknown'} | Size: ${fileSize.humanReadable} | Ranges: $acceptsRanges";
 }
 
+/// Performs an HTTP HEAD request (with fallback to GET) to retrieve file metadata.
+///
+/// **Why**: Standard HEAD requests are often blocked by CDNs or WAFs. This function
+/// intelligently falls back to a range-limited GET request to guarantee metadata retrieval.
+/// **How**: [client] and [logBuffer] are optional. If [client] is null, a temporary one is created and closed.
 Future<HeaderInfo> sendHeadRequest(
   Uri url, [
   HttpClient? client,
@@ -179,6 +189,10 @@ Future<HeaderInfo> _fallbackGetHeader(
   return info;
 }
 
+/// Utility class for representing and formatting file sizes.
+///
+/// **Why**: Simplifies conversion between bytes, KB, MB, and GB while providing
+/// a consistent human-readable string representation.
 class FileSize {
   final int bytes;
 

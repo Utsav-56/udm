@@ -8,8 +8,11 @@ import 'package:udm/helpers/path_helpers/sync/sync_helper.dart';
 export 'sync/sync_helper.dart';
 export 'async/async_helpers.dart';
 
-/// A standard singleton class that gives access to all path and file operations,
-/// both synchronously and asynchronously.
+/// A unified gateway for all filesystem path and file operations.
+///
+/// **Why**: Centralizes path manipulation (joining, normalizing, extension parsing)
+/// to ensure cross-platform compatibility (Windows vs POSIX).
+/// **How**: Accessible via the global instance [p]. Combines synchronous and asynchronous helpers.
 class AppPathHelper with PathHelper, PathHelperAsync {
   AppPathHelper._privateConstructor();
 

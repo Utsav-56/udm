@@ -13,7 +13,9 @@ import 'package:udm/models/downloader_config.dart';
 /// the multiThreadDownloader and Single downloader should be the child classes of this clas
 
 /// The blueprint for all Downloader implementations.
-/// This handles the state management and provides a stream for progress updates.
+///
+/// **Why**: Provides a unified interface for both [SingleStreamDownloader] and [MultiStreamDownloader].
+/// **How**: Extend this class and implement [start] and [timerFunction].
 abstract class Downloader {
   late final DownloaderConfig config;
 
@@ -164,12 +166,32 @@ abstract class Downloader {
   void showProgress();
 }
 
-enum DownloadState { initial, downloading, paused, cancelled, completed }
+/// Represents the current lifecycle stage of a download process.
+enum DownloadState {
+  /// Initial setup, including head parsing and file allocation.
+  initial,
+
+  /// Actively fetching data from the remote server.
+  downloading,
+
+  /// Data stream is suspended but can be resumed.
+  paused,
+
+  /// Download stopped by user or fatal error; cannot be resumed from this state.
+  cancelled,
+
+  /// File fully downloaded and verified.
+  completed,
+}
 
 /// the status class of the download
 /// it holds the overall progress of the download
 /// and the speed of the download
 ///
+/// Tracks the real-time telemetry and state of a download.
+///
+/// **Why**: Centralizes progress, speed, ETA, and timing calculations.
+/// **How**: Used by [Downloader] to emit updates via [stream].
 class DownloadStatus {
   DownloadStatus({required this.totalSize, int? id}) {
     this.id = id ?? DateTime.now().millisecond.toInt();
@@ -270,7 +292,9 @@ class DownloadStatus {
   int totalBytesDownloaded = 0; // the overall progress of download
   int _previousBytesDownloaded = 0; // field needed for calculating speed in timer tick
 
-  // Speed is now accurately normalized to Bytes Per Second
+  /// The current transfer speed normalized to Bytes Per Second (BPS).
+  ///
+  /// **Why**: Standardizing on BPS allows for consistent formatting across different units (KB/s, MB/s).
   double bytesPerSecond = 0;
 
   // Logic Helpers
@@ -295,7 +319,9 @@ class DownloadStatus {
       StreamController<DownloadStatus>.broadcast();
   Stream<DownloadStatus> get stream => _controller.stream;
 
-  /// downloader state
+  /// The current state of the download lifecycle.
+  ///
+  /// **Why**: Controls UI behavior (e.g., showing/hiding Pause button).
   DownloadState state = DownloadState.initial;
 
   void updateState(DownloadState newState) {

@@ -5,48 +5,47 @@ import 'dart:isolate';
 import 'package:udm/helpers/path_helpers/path_helpers.dart';
 import 'package:udm/models/saveable_config.dart';
 
-/// Download type specifies what method of download the downloader should use
+/// Specifies the strategy the downloader should employ to fetch the file.
 ///
-/// It can either be single or smart download.
-///
-/// We cannot always ensure that multi stream is possible so, there is no multi stream only type
+/// **Why**: Servers vary in their support for concurrent range requests. This enum
+/// allows users to force a safe path or let the system optimize.
 enum DownloadType {
-  /// forces the downloader to use single stream download
-  /// even if the server supports range requests. This is useful for testing and for servers that have issues with range requests.
+  /// Forces the downloader to use a single persistent stream.
+  ///
+  /// **Why**: Useful for testing or for servers that explicitly ban multi-connections.
+  /// **How**: Set this in [DownloaderConfig] to bypass multi-thread logic.
   single,
 
-  /// allows the downloader to choose the best download method based on the server's capabilities.
-  /// if server supports then we will use multi stream download, otherwise we will fall back to single stream download.
-  /// it is the default download type and is recommended for most use cases
+  /// Automatically chooses the best method (Multi-stream if supported, fallback to Single).
+  ///
+  /// **Why**: Provides the best performance balance without risking failure on non-resumable servers.
+  /// **Note**: This is the default and recommended type.
   smart,
 }
 
-/// The config needed for downloader to download the file.
-/// It includes all the configs or that the downloader needs to set before starting the download
+/// Configuration container for all parameters required by the [Downloader].
+///
+/// **Why**: Centralizes settings like output paths, thread counts, and headers to
+/// ensure consistent behavior across different download instances.
+/// **How**: Can be instantiated manually or loaded from a saved JSON configuration.
 class DownloaderConfig extends SaveableConfig<DownloaderConfig>
     implements Savable<DownloaderConfig> {
-  /// the directory where the downloaded file will be saved
-  /// If not provided then it will use the default download directory of the system or the current directory as fallback
+  /// The directory where the downloaded file will be saved.
   ///
-  /// it is optional but if provided then, ensure that the path is valid and you actually have write prrmisisons in that directory,
-  /// otherwise it will throw an error when the downloader tries to save the file
+  /// **Note**: If null, the system's default download directory is used.
+  /// **Caution**: Ensure the process has write permissions for this directory.
   // Layer 1: Explicit User Input (Keep null if not provided)
   String? _explicitOutputDir;
 
-  /// the preferred filename that you want to use for the saved file,
-  /// it is purely optional
-  /// if not provided then we will try to get the filename from header info, url respectively, or else we will default to "Udm-downloaded-file"
+  /// The preferred filename for the saved file.
   ///
-  /// If provided and the filename already exists then a unique suffix will automatically be added to the filename to avoid the overwritting issue of existing file
-  ///
+  /// **Why**: Allows users to override the default filename resolved from headers or URL.
+  /// **Note**: If a file with the same name exists, a unique suffix will be appended.
   String? _explicitFilename;
 
-  /// This is for debugging purpose,
-  /// if it is verbose then it will print the logs of the download process in the terminals std io, otherwise it will not print any logs
-  /// it is purely optional and  defaults to false
+  /// Whether to print detailed internal logs to the terminal.
   ///
-  /// this will just print the logs in terminal,
-  /// but if the process is not attached to a terminal then no matter if user gives verbose or not it will be false in that case.
+  /// **Why**: Essential for debugging communication between isolates and servers.
   final bool verbose;
 
   /// the [DownloadType] that the downloader will use to download the file, it is optional and defaults to [DownloadType.smart]

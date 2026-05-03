@@ -9,6 +9,11 @@ import 'package:udm/models/downloader_config.dart';
 /// A single stream download class
 /// it extends the downloader class and implements the start method
 
+/// Implementation of [Downloader] that uses a single persistent stream to fetch data.
+///
+/// **Why**: Acts as a reliable fallback for servers that do not support HTTP range
+/// requests or for environments where multi-connection limits are enforced.
+/// **How**: Extends [Downloader] and processes a single HTTP response stream.
 class SingleStreamDownloader extends Downloader {
   SingleStreamDownloader({required super.url, DownloaderConfig? config})
     : super(config: config);
