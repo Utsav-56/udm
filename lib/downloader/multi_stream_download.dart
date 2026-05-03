@@ -1,41 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math';
 
 import 'package:udm/downloader/downloader.dart';
 import 'package:udm/downloader/multi_thread_helpers/messenger.dart';
+import 'package:udm/downloader/multi_thread_helpers/worker_chunk.dart';
 import 'package:udm/head_parser.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
-import 'package:udm/models/downloader_config.dart';
 import 'package:udm/models/metrics_models.dart';
-
-/// The chunk will be in isolate so we need to pass the configs as a single object.
-class WorkerChunk {
-  final int index;
-
-  final Range range;
-
-  final DownloaderConfig config;
-
-  final SendPort sendPort;
-
-  const WorkerChunk({
-    required this.index,
-    required this.range,
-    required this.config,
-    required this.sendPort,
-  });
-
-  int get size => range.size;
-
-  @override
-  String toString() {
-    return 'Chunk $index: bytes ${range.start}-${range.end} (size: ${size.asFileSize.humanReadable})';
-  }
-}
-
-/// worker map always starts with index  as key
-typedef WorkerMap<T> = Map<int, T>;
 
 class MultiStreamDownload extends Downloader {
   MultiStreamDownload({required super.config});
@@ -207,10 +180,105 @@ class MultiStreamDownload extends Downloader {
   }
 }
 
+class ChunkCallbacks {
+  late final void Function(DownloadStatus) onProgress;
+  late final void Function() onCompleted;
+  late final void Function(Object error, Range newRange) onError;
+
+  ChunkCallbacks({
+    required this.onProgress,
+    required this.onCompleted,
+    required this.onError,
+  });
+}
+
+class ChunkDownloader {
+  final WorkerChunk worker;
+  final HttpClient client;
+  final DownloadStatus status;
+  final ChunkCallbacks callbacks;
+
+  final bool shouldRetryOnError;
+  final int maxRetryCount;
+
+  ChunkDownloader(
+    this.worker,
+    this.client,
+    this.callbacks, {
+    this.shouldRetryOnError = false,
+    this.maxRetryCount = 2,
+    DownloadStatus? status,
+  }) : status = status ?? DownloadStatus(totalSize: worker.size, id: worker.index);
+
+  Future<void> start() async {
+    int attempts = 0;
+    Range currentRange = worker.range;
+    bool worthRetrying = true;
+
+    while (attempts <= maxRetryCount) {
+      RandomAccessFile? file;
+      try {
+        // Open in writeOnly mode to allow seeking to specific offsets
+        file = await File(worker.config.absoluteFilename).open(mode: FileMode.writeOnly);
+
+        status.markStarted();
+
+        final request = await client.getUrl(worker.config.url);
+        request.headers.add(HttpHeaders.rangeHeader, currentRange.asRangeHeader);
+        final response = await request.close();
+
+        if (response.statusCode != HttpStatus.partialContent) {
+          worthRetrying = false;
+          throw Exception(
+            "Worker ${worker.index} failed: Server returned ${response.statusCode}, expected ${HttpStatus.partialContent}",
+          );
+        }
+
+        // Seek to the correct start position for this attempt
+        await file.setPosition(currentRange.start);
+
+        await for (var chunk in response) {
+          if (status.isPaused) {
+            await status.waitUntilResume();
+          }
+
+          if (status.isCancelled) {
+            throw Exception("Worker ${worker.index} was cancelled");
+          }
+
+          await file.writeFrom(chunk);
+          status.increment(chunk.length);
+          callbacks.onProgress(status);
+
+          // Update currentRange.start so we resume from the exact byte if it fails next
+          currentRange = Range(currentRange.start + chunk.length, currentRange.end);
+        }
+
+        status.markCompleted();
+        callbacks.onCompleted();
+        return; // Success
+      } catch (e) {
+        if (!shouldRetryOnError ||
+            !worthRetrying ||
+            attempts >= maxRetryCount ||
+            status.isCancelled) {
+          callbacks.onError(e, currentRange);
+          return;
+        }
+
+        attempts++;
+        final pauseTime = pow(2, attempts).toInt(); // Exponential backoff: 2s, 4s, ...
+        await Future.delayed(Duration(seconds: pauseTime));
+      } finally {
+        await file?.close();
+      }
+    }
+  }
+}
+
 /// the download worker isolate entry point
 Future<void> downloadWorker(WorkerChunk worker) async {
   final client = HttpClient();
-  final file = await File(worker.config.absoluteFilename).open(mode: FileMode.append);
 
   final DownloadStatus status = DownloadStatus(
     totalSize: worker.range.size,
@@ -243,48 +311,37 @@ Future<void> downloadWorker(WorkerChunk worker) async {
   messenger.startListening();
   messenger.handshake();
 
+  // Periodic timer to calculate speed and trigger progress updates to main isolate
+  final timer = Timer.periodic(const Duration(milliseconds: 500), (t) {
+    status.timerTick(const Duration(milliseconds: 500));
+  });
+
+  final chunkDownloader = ChunkDownloader(
+    worker,
+    client,
+    ChunkCallbacks(
+      onProgress: (chunkStatus) {
+        // No need to sync manually if we share the status object
+      },
+      onCompleted: () {
+        // status is updated inside ChunkDownloader
+      },
+      onError: (error, newRange) {
+        messenger.sendErrorToMain(newRange, error.toString());
+      },
+    ),
+    status: status, // Share the status object to avoid sync issues
+    shouldRetryOnError: true,
+    maxRetryCount: 3,
+  );
+
   // start the download
   try {
-    status.markStarted();
-
-    final request = await client.getUrl(worker.config.url);
-    request.headers.add(HttpHeaders.rangeHeader, worker.range.asRangeHeader);
-    final response = await request.close();
-
-    if (response.statusCode != HttpStatus.partialContent) {
-      throw Exception(
-        "Worker ${worker.index} failed, Server might not support range headers or partial contents,  expected,  status of ${HttpStatus.partialContent} but got ${response.statusCode}",
-      );
-    }
-
-    // seek to the correct start position for this thread
-    await file.setPosition(worker.range.start);
-
-    await for (var chunk in response) {
-      if (status.isPaused) {
-        await status.waitUntilResume();
-      }
-
-      if (status.isCancelled) {
-        throw Exception("Worker ${worker.index} was cancelled");
-      }
-
-      await file.writeFrom(chunk);
-      status.increment(chunk.length);
-
-      messenger.sendProgressToMain(status);
-    }
-
-    status.markCompleted();
+    await chunkDownloader.start();
   } catch (e) {
-    // in case of error we give the uncompleted rage
-    final newRange = Range(
-      worker.range.start + status.totalBytesDownloaded,
-      worker.range.end,
-    );
-    messenger.sendErrorToMain(newRange, e.toString());
+    // start() handles errors via callbacks, but catch for safety
   } finally {
-    await file.close();
+    timer.cancel();
     client.close();
     await status.dispose();
   }

@@ -70,7 +70,8 @@ mixin TerminalHelper {
 }
 
 /// prints a message and cleans the next n lines in terminal
-void println(String message, [int linesToClean = 1]) {
+void println(String message, [int linesToClean = 1, bool isVerboseMode = false]) {
+  if (!isVerboseMode) return;
   cleanln(linesToClean);
   stdout.writeln("$message");
 }
@@ -87,13 +88,18 @@ void cleanln(int n) {
 /// use [cleanLastLinesAndPrint] to clean last n lines and print the given text
 /// this class is usefull for printing progress bars and other dynamic information
 class LogBuffer with TerminalHelper {
-  LogBuffer();
+  final bool showProgressInTerminal;
+
+  LogBuffer({this.showProgressInTerminal = false});
 
   int _lastLineCount = 0;
   int _currentLineCursor = 0; // Tracks the horizontal column (0 to Width-1)
 
   /// The heavy lifter: Handles text, literal newlines, and automatic wrapping
   void write(String text) {
+    // if we are not in verbose mode then we dont bother to print
+    if (!showProgressInTerminal) return;
+
     if (text.isEmpty) return;
 
     final columns = stdout.hasTerminal ? stdout.terminalColumns : 80;

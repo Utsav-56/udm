@@ -55,6 +55,61 @@ class DownloaderConfig {
   /// the [DownloadType] that the downloader will use to download the file, it is optional and defaults to [DownloadType.smart]
   final DownloadType downloadType;
 
+  /// the time duration of progress syncing in milliseconds
+  /// to prevent the cpu wastage we wont be polling the status too frequently
+  /// set this to a suitable [Duration] value in milliseconds
+  ///
+  /// Note:: this is the same duration that will be used in the [Downloader.timerFunction] to send the timer tick to status and show progress
+  /// defaults to 500 milliseconds
+  final int progressSyncInterval;
+
+  /// either to show the progress in the terminal or not
+  /// if this is [false] then we will not be showing the progress in the terminal
+  ///
+  /// This is different from [verbose] in that this only controls the progress display
+  /// while [verbose] controls all logs
+  ///
+  /// defaults to true
+  final bool showProgressInTerminal;
+
+  /// if this is true then we will log every steps into the terminal
+  ///
+  /// this depends upoon the [showProgressInTerminal] value
+  ///
+  /// if [showProgressInTerminal] is false then we will not be logging any steps even if this is true
+  ///
+  /// defaults to false
+  final bool isVerboseMode;
+
+  /// the no of threads to be used if in case the multi stream download is supported
+  ///
+  /// this value will have no effect if the server does not support multi stream download
+  ///
+  /// Choose a appropriate value as this is repsonsible to spawn isolate(threads) which consumes CPU power
+  /// this is optional and defaults to 10
+  ///
+  /// Note:: that setting this value to a huge doesnot boost the speed, if your wifi is 20mbps download will never ever be more then 20mbps remember that
+  /// in some case the download will be slowed if too many spawned as each has own overhead, latency, and CPU usage
+  /// the 8-12 is a ideal value for most cases
+  ///
+  final int threadCount;
+
+  /// the headers to be sent with the request, optional
+  ///
+  /// This will be attached to every request the downloader will make
+  ///
+  /// If making request to a protected site then setting this is ideal or else download may fail
+  ///
+  final Map<String, String>? headers;
+
+  /// the cookie string to be sent with the request, optional
+  ///
+  /// This will be attached to every request the downloader will make
+  ///
+  /// If making request to a protected site then setting this is ideal or else download may fail
+  ///
+  final String cookie;
+
   /// in each instance creation this will be initialized with the saved config or user preference
   ///
   /// any changes made to the config file afterwards is not reflected in the existing instances.
@@ -112,6 +167,12 @@ class DownloaderConfig {
     String? filename,
     this.verbose = false,
     this.downloadType = DownloadType.smart,
+    this.progressSyncInterval = 500,
+    this.showProgressInTerminal = true,
+    this.headers,
+    this.cookie = "",
+    this.threadCount = 10,
+    this.isVerboseMode = false,
   }) {
     if (fileUrl.isEmpty) {
       throw ArgumentError("URL cannot be empty");
@@ -168,5 +229,33 @@ class DownloaderConfig {
 
     json.addAll(configs);
     file.writeAsStringSync(jsonEncode(json));
+  }
+
+  /// copies the current [DownloaderConfig] with the new states
+  /// if any of the parameters is not provided then it will use the current value
+  DownloaderConfig copyWith({
+    String? fileUrl,
+    String? saveDir,
+    String? filename,
+    DownloadType? downloadType,
+    int? progressSyncInterval,
+    bool? isVerboseMode,
+    bool? showProgressInTerminal,
+    Map<String, String>? headers,
+    String? cookie,
+    int? threadCount,
+  }) {
+    return DownloaderConfig(
+      fileUrl: fileUrl ?? this.url.toString(),
+      saveDir: saveDir ?? this.outputDir,
+      filename: filename ?? this.filename,
+      downloadType: downloadType ?? this.downloadType,
+      progressSyncInterval: progressSyncInterval ?? this.progressSyncInterval,
+      isVerboseMode: isVerboseMode ?? this.isVerboseMode,
+      showProgressInTerminal: showProgressInTerminal ?? this.showProgressInTerminal,
+      headers: headers ?? this.headers,
+      cookie: cookie ?? this.cookie,
+      threadCount: threadCount ?? this.threadCount,
+    );
   }
 }

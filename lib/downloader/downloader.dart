@@ -19,28 +19,24 @@ abstract class Downloader {
   // State and progress Tracking
   late final DownloadStatus status;
 
-  Downloader({
-    required this.config,
-    this.timerInterval = const Duration(milliseconds: 300),
-  });
+  Downloader({required this.config})
+    : logBuffer = LogBuffer(showProgressInTerminal: config.showProgressInTerminal);
 
   /// a buffer to store the terminal buffer
-  final logBuffer = LogBuffer();
+  final LogBuffer logBuffer;
 
   /// The external API to listen for progress updates.
   Stream<DownloadStatus> get progressStream => status.stream;
-
   Timer? _timer;
-  final Duration timerInterval;
+
+  /// the timer interval is derived from the [DownloaderConfig.progressSyncInterval]
+  Duration get timerInterval => Duration(milliseconds: config.progressSyncInterval);
 
   bool get isPaused => status.isPaused;
   bool get isCancelled => status.isCancelled;
   bool get isCompleted => status.isCompleted;
   bool get isDownloading => status.isDownloading;
   bool get isInitialising => status.isInitialising;
-
-  @override
-  bool get isVerboseMode => config.verbose;
 
   // save path helpers
   HeaderInfo? _headerInfo;
@@ -109,6 +105,7 @@ abstract class Downloader {
     final file = File(absolutePath);
     if (!await file.parent.exists()) {
       logBuffer.writeln("Directory not found, creating directory");
+
       await file.parent.create(recursive: true);
     }
 
@@ -219,6 +216,22 @@ class DownloadStatus {
 
     // bytesPerSecond is NOT updated here because it's usually calculated by the timer in the receiver isolate
   }
+
+  /// this increments self from the given status
+  /// this does not override the current bytes download count
+  /// it rather just adds on it
+  void addProgressFromStatus(DownloadStatus status) {
+    if (id != status.id) {
+      throw Exception(
+        "Status IDs do not match, trying to update this(${this.id}) with ${status.id}",
+      );
+    }
+    final delta = status.totalBytesDownloaded - _previousSyncBytes;
+    totalBytesDownloaded += delta;
+    _previousSyncBytes = status.totalBytesDownloaded;
+  }
+
+  int _previousSyncBytes = 0;
 
   late final int id; // to identify the stream
 
