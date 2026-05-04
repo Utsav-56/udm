@@ -12,7 +12,6 @@
 library;
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:udm/helpers/extensions/date_extensions.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
@@ -340,110 +339,7 @@ class DownloadStatus {
     }
   }
 
-  /// Generates a visual progress bar string for terminal display.
-  ///
-  /// Adapts based on the current [state] (e.g., showing a solid bar for completed,
-  /// or "Paused" text).
-  String makeProgressBar({int? barLength, int? preferredWidth}) {
-    if (totalBytesDownloaded >= totalSize && totalSize > 0) {
-      markCompleted();
-    }
-    switch (state) {
-      case DownloadState.initial:
-        return "Initiating download...";
-      case DownloadState.downloading:
-        return _makeDownloadingBar(barLength: barLength, preferredWidth: preferredWidth);
-      case DownloadState.paused:
-        return _makePausedBar(barLength: barLength, preferredWidth: preferredWidth);
-      case DownloadState.cancelled:
-        return _makeCancelledBar(barLength: barLength, preferredWidth: preferredWidth);
-      case DownloadState.completed:
-        return _makeCompletedBar(barLength: barLength, preferredWidth: preferredWidth);
-    }
-  }
-
-  /// Returns a progress bar for paused state
-  /// it does not show speed or eta
-  /// makes following bar
-  /// [=============== Paused ================]
-  /// Revised internal helper to ensure bars are always cleared and consistent
-  String _makeTextedBar({required String text, int? preferredWidth, int? barLength}) {
-    final width = preferredWidth ?? (stdout.hasTerminal ? stdout.terminalColumns : 80);
-    // Subtract 2 for the brackets []
-    barLength = barLength ?? (width - 2).clamp(10, 200);
-
-    if (text.length >= barLength) return "[${text.substring(0, barLength)}]";
-
-    final sideLength = (barLength - text.length) ~/ 2;
-    final padding = "=" * sideLength;
-
-    // Ensure total length matches barLength exactly even with odd numbers
-    String bar = (padding + text + padding).padRight(barLength, "=");
-
-    return "[$bar]";
-  }
-
-  String _makePausedBar({int? barLength, int? preferredWidth}) => _makeTextedBar(
-    text: " Paused ",
-    barLength: barLength,
-    preferredWidth: preferredWidth,
-  );
-  String _makeCancelledBar({int? barLength, int? preferredWidth}) => _makeTextedBar(
-    text: " Cancelled ",
-    barLength: barLength,
-    preferredWidth: preferredWidth,
-  );
-  String _makeCompletedBar({int? barLength, int? preferredWidth}) => _makeTextedBar(
-    text: " Completed ",
-    barLength: barLength,
-    preferredWidth: preferredWidth,
-  );
-
-  /// makes a bar such as
-  /// [██████----------] 30% | Speed: 500 KB/s | ETA: 1m 20s left
-  String _makeDownloadingBar({int? barLength, int? preferredWidth}) {
-    if (isInitialising) {
-      return "Initiating download..."; // we havent started download yet
-    }
-
-    String suffix = "${progressPercent.toStringAsFixed(2)}% ";
-    if (!isPaused) {
-      suffix += "| Speed: $speedText | ETA: $eta"; // speed is undefined in pause state
-    }
-
-    final width = preferredWidth ?? (stdout.hasTerminal ? (stdout.terminalColumns) : 80);
-
-    /// if width is less then the suffix
-    /// in short if the terminal is too small we show suffix below the bar instead of right side
-    if (width < suffix.length + 10) {
-      barLength = width - 3; // 2 for the brackets [] and 1 for some padding
-      suffix = "\n$suffix"; // move suffix to next line
-    } else {
-      barLength = (width - suffix.length - 3);
-    }
-
-    final filledLength = ((progressPercent / 100) * barLength).round();
-
-    List<String> barChars = List.generate(barLength, (i) {
-      return i < filledLength ? '█' : '-';
-    });
-
-    if (isPaused) {
-      final pausedText = " Paused ";
-      final start = (barLength / 2 - pausedText.length / 2).floor();
-
-      for (int i = 0; i < pausedText.length; i++) {
-        if (start + i < barChars.length) {
-          barChars[start + i] = pausedText[i];
-        }
-      }
-    }
-
-    final bar = barChars.join();
-    return "[$bar] $suffix";
-  }
-
-  /// Closes the internal stream controller.
+  /// Disposes the internal stream controller.
   Future<void> dispose() async {
     await _controller.close();
   }
@@ -472,16 +368,5 @@ extension StatusHelper on List<DownloadStatus> {
     for (var status in this) {
       await status.dispose();
     }
-  }
-
-  /// Generates a list of formatted progress bar strings for all statuses.
-  List<String> makeProgressAll({int? barLength, int? preferredWidth}) {
-    final List<String> progressList = [];
-    for (var status in this) {
-      progressList.add(
-        status.makeProgressBar(barLength: barLength, preferredWidth: preferredWidth),
-      );
-    }
-    return progressList;
   }
 }

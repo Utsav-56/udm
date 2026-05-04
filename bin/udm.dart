@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:udm/downloader/downloader.dart';
-import 'package:udm/downloader/multi_thread/multi_stream_downloader.dart';
 import 'package:udm/downloader/models/downloader_config.dart';
 
 const String version = '0.0.1';
@@ -36,7 +35,6 @@ void main(List<String> arguments) {
   final config = DownloaderConfig(
     filename: "demo-file.zip",
     saveDir: Directory.current.path,
-    showProgressInTerminal: false,
   );
 
   const demoUrl = "https://releases.ubuntu.com/26.04/ubuntu-26.04-desktop-amd64.iso";
@@ -47,5 +45,4 @@ void main(List<String> arguments) {
     manager.enqueue(demoUrl, config);
   }
 
-  // 1001.divideIntoParts(8).debug(expectedTotal: 1001);
 }

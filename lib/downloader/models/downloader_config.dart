@@ -48,8 +48,7 @@ class DownloaderConfig {
   /// Explicitly set filename provided during instantiation.
   String? _explicitFilename;
 
-  /// Whether to output internal debugging information.
-  final bool verbose;
+
 
   /// The strategy used for fetching the file (e.g., [DownloadType.smart]).
   final DownloadType downloadType;
@@ -61,16 +60,7 @@ class DownloaderConfig {
   /// execution. Defaults to 500ms.
   final int progressSyncInterval;
 
-  /// Whether to render a progress bar and status updates in the terminal.
-  ///
-  /// If set to `false`, the downloader will still emit progress via the
-  /// [Downloader.progressStream] but will not write to `stdout`.
-  late final bool showProgressInTerminal;
 
-  /// Enables detailed step-by-step logging of the download process.
-  ///
-  /// Requires [showProgressInTerminal] to be `true` for any terminal output.
-  final bool isVerboseMode;
 
   /// The number of concurrent connections (threads/isolates) to use for
   /// multi-threaded downloads.
@@ -147,14 +137,11 @@ class DownloaderConfig {
   DownloaderConfig({
     String? saveDir,
     String? filename,
-    this.verbose = false,
     this.downloadType = DownloadType.smart,
     this.progressSyncInterval = 500,
-    bool? showProgressInTerminal,
     this.headers,
     this.cookie = "",
     this.threadCount = 10,
-    this.isVerboseMode = false,
     this.preferResolvedExtension = true,
   }) {
     populateConfigs();
@@ -162,13 +149,6 @@ class DownloaderConfig {
     //Assign "User" Layer (this overrides the saved layer in getters)
     outputDir = saveDir;
     this.filename = filename;
-
-    /// if the stdout has no terminal connected then we will not be showing the progress
-    if (stdout.hasTerminal) {
-      this.showProgressInTerminal = showProgressInTerminal ?? true;
-    } else {
-      this.showProgressInTerminal = false;
-    }
   }
 
   /// Resolves the absolute path to the global UDM configuration file.
@@ -211,13 +191,10 @@ class DownloaderConfig {
 
   /// Creates a copy of the current [DownloaderConfig] with updated properties.
   DownloaderConfig copyWith({
-    String? fileUrl,
     String? saveDir,
     String? filename,
     DownloadType? downloadType,
     int? progressSyncInterval,
-    bool? isVerboseMode,
-    bool? showProgressInTerminal,
     Map<String, String>? headers,
     String? cookie,
     int? threadCount,
@@ -228,8 +205,6 @@ class DownloaderConfig {
       filename: filename ?? this.filename,
       downloadType: downloadType ?? this.downloadType,
       progressSyncInterval: progressSyncInterval ?? this.progressSyncInterval,
-      isVerboseMode: isVerboseMode ?? this.isVerboseMode,
-      showProgressInTerminal: showProgressInTerminal ?? this.showProgressInTerminal,
       headers: headers ?? this.headers,
       cookie: cookie ?? this.cookie,
       threadCount: threadCount ?? this.threadCount,
@@ -243,29 +218,22 @@ class DownloaderConfig {
     filename: "UDM-Downloaded-File",
     downloadType: DownloadType.smart,
     progressSyncInterval: 500,
-    isVerboseMode: false,
-    showProgressInTerminal: true,
     headers: null,
     cookie: "",
     threadCount: 10,
     preferResolvedExtension: true,
   );
 
-  @override
   DownloaderConfig get defaultValue => defaultInstance;
 
-  @override
   String get configFilePath => p.join(p.getHomeDir(), ".udm", "downloader_config.json");
 
-  @override
   DownloaderConfig fromJson(Map<String, dynamic> json) {
     return DownloaderConfig(
       saveDir: json['saveDir'],
       filename: json['filename'],
       downloadType: DownloadType.values[json['downloadType']],
       progressSyncInterval: json['progressSyncInterval'],
-      isVerboseMode: json['isVerboseMode'],
-      showProgressInTerminal: json['showProgressInTerminal'],
       headers: json['headers'],
       cookie: json['cookie'],
       threadCount: json['threadCount'],
@@ -273,15 +241,12 @@ class DownloaderConfig {
     );
   }
 
-  @override
   Map<String, dynamic> toJson() {
     return {
       'saveDir': outputDir,
       'filename': filename,
       'downloadType': downloadType.index,
       'progressSyncInterval': progressSyncInterval,
-      'isVerboseMode': isVerboseMode,
-      'showProgressInTerminal': showProgressInTerminal,
       'headers': headers,
       'cookie': cookie,
       'threadCount': threadCount,
@@ -289,7 +254,6 @@ class DownloaderConfig {
     };
   }
 
-  @override
   String tojsonString() {
     return const JsonEncoder.withIndent("    ").convert(toJson());
   }

@@ -18,7 +18,6 @@ import 'dart:math';
 import 'package:udm/downloader/downloader.dart';
 import 'package:udm/downloader/models/messenger.dart';
 import 'package:udm/downloader/models/worker_chunk.dart';
-import 'package:udm/downloader/head_parser.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/models/range.dart';
 
@@ -35,12 +34,8 @@ import 'package:udm/models/range.dart';
 /// ```
 class MultiStreamDownload extends Downloader {
   /// Creates a [MultiStreamDownload] instance for the given [url].
-  MultiStreamDownload({
-    required super.url,
-    required super.headerInfo,
-    super.config,
-  }) {
-    threadCounnt = config.threadCount ?? 8;
+  MultiStreamDownload({required super.url, required super.headerInfo, super.config}) {
+    threadCounnt = config.threadCount;
   }
 
   /// Number of concurrent worker threads to spawn.
@@ -93,8 +88,6 @@ class MultiStreamDownload extends Downloader {
     }
   }
 
-
-
   /// Routes and handles messages received from worker isolates.
   ///
   /// Processes progress updates, error reports, and connection handshakes.
@@ -111,7 +104,7 @@ class MultiStreamDownload extends Downloader {
           _finishedWorkerIndexes.add(index);
         }
       } catch (e) {
-        logBuffer.writeError("Error: $e");
+        // Error update failed
       }
     } else if (data is ErrorMessage) {
       // TODO: Implement centralized error handling and retry orchestration
@@ -146,14 +139,7 @@ class MultiStreamDownload extends Downloader {
 
     if (status.isCompleted) {
       timer.cancel();
-      if (stdout.hasTerminal) {
-        showFinalProgress();
-      }
       await cleanup();
-    } else {
-      if (stdout.hasTerminal) {
-        showProgress();
-      }
     }
   }
 
@@ -173,54 +159,7 @@ class MultiStreamDownload extends Downloader {
     await _downloadCompleter!.future;
   }
 
-  @override
-  void showFinalProgress() {
-    StringBuffer buffer = StringBuffer();
 
-    buffer.writeln("Downloaded: $filename ($absolutePath)");
-    buffer.writeln(
-      "Time Taken: ${status.timeTaken} || Average Speed: ${status.averageSpeedText}",
-    );
-
-    final output = buffer.toString();
-    logBuffer.cleanLastLinesAndPrint(output);
-  }
-
-  @override
-  void showProgress() {
-    if (isInitialising) return;
-
-    final buffer = StringBuffer();
-
-    // Line 1: Filename and Size
-    buffer.writeln("File: $filename | (${status.sizeLeftText})");
-
-    // The overall actual Progress Bar
-    // Using status.showProgress() or makeProgressBar()
-    buffer.writeln(status.makeProgressBar());
-
-    if (_finishedWorkerIndexes.isNotEmpty) {
-      buffer.writeln("Finished Threads: ${_finishedWorkerIndexes.toList()..sort()}");
-    }
-
-    if (!(_finishedWorkerIndexes.length == threadCounnt)) {
-      buffer.writeln("\nThread Progresses::");
-
-      for (var key in _workerStatuses.keys) {
-        if (_finishedWorkerIndexes.contains(key)) continue;
-
-        final workerStatus = _workerStatuses[key]!;
-        buffer.writeln("Thread ${key + 1} | (${workerStatus.sizeLeftText})");
-        buffer.writeln(workerStatus.makeProgressBar());
-      }
-    }
-
-    // Line 3: Controls menu
-    buffer.write("\nControls: [p] Pause | [r] Resume | [c] Cancel");
-
-    final output = buffer.toString();
-    logBuffer.cleanLastLinesAndPrint(output);
-  }
 
   @override
   Future<void> cleanup() async {

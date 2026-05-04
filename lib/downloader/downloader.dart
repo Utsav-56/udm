@@ -17,7 +17,6 @@ import 'dart:io';
 import 'package:udm/downloader/models/download_status.dart';
 import 'package:udm/downloader/head_parser.dart';
 import 'package:udm/helpers/path_helpers/path_helpers.dart';
-import 'package:udm/helpers/terminal_helpers/terminal_helper.dart';
 import 'package:udm/downloader/models/downloader_config.dart';
 
 export './models/download_status.dart';
@@ -44,7 +43,7 @@ export 'download_manager.dart';
 abstract class Downloader {
   /// Configuration settings for this downloader instance.
   ///
-  /// Includes options for output directory, naming preferences, and UI behavior.
+  /// Includes options for output directory and naming preferences.
   late final DownloaderConfig config;
 
   // State and progress Tracking
@@ -72,7 +71,6 @@ abstract class Downloader {
     id = DateTime.now().millisecondsSinceEpoch.toString();
     this.url = Uri.parse(url);
     this.config = config ?? DownloaderConfig.defaultInstance;
-    logBuffer = LogBuffer(showProgressInTerminal: this.config.showProgressInTerminal);
     _resolveFilename();
   }
 
@@ -105,9 +103,6 @@ abstract class Downloader {
       config.filename = resolvedName;
     }
   }
-
-  /// A buffer used to manage and display terminal logs and progress.
-  late final LogBuffer logBuffer;
 
   /// A stream that emits [DownloadStatus] updates during the download process.
   Stream<DownloadStatus> get progressStream => status.stream;
@@ -172,24 +167,16 @@ abstract class Downloader {
 
   /// Hook that executes periodically based on [timerInterval].
   ///
-  /// Concrete classes should use this to update UI, log progress, or perform
-  /// health checks.
+  /// Concrete classes should use this to update status or perform health checks.
   Future<void> timerFunction(Timer timer);
 
   /// Initializes the downloader by fetching headers and preparing the local file.
   ///
-  /// This method must be called before [start]. It sets up the [status],
-  /// [logBuffer], and disk allocation.
+  /// This method must be called before [start]. It sets up the [status]
+  /// and disk allocation.
   ///
   /// Throws an exception if head request fails or file cannot be created.
   Future<void> init() async {
-    logBuffer.writeln(
-      "Headers fetched successfully\n"
-      "Filename: ${headerInfo.filename}\n"
-      "File Size: ${headerInfo.fileSize.humanReadable}\n"
-      "URL: $url",
-    );
-
     status = DownloadStatus(totalSize: headerInfo.fileSize.bytes);
 
     await _prepareFile();
@@ -198,9 +185,6 @@ abstract class Downloader {
 
     _initCompleter.complete();
   }
-
-  /// Displays the final status of the download.
-  void showFinalProgress();
 
   /// Allocates space on the disk and opens the file for writing.
   ///
@@ -211,15 +195,10 @@ abstract class Downloader {
   Future<void> _prepareFile() async {
     final file = File(absolutePath);
     if (!await file.parent.exists()) {
-      logBuffer.writeln("Directory not found, creating directory");
-
       await file.parent.create(recursive: true);
     }
 
     if (headerInfo.fileSize.bytes == -1) {
-      logBuffer.writeError(
-        "Cannot prepare file: unknown file size {${headerInfo.fileSize.bytes}}, trying to proceed",
-      );
       // we dont know the file size so we cant prepare but we wont stop
       // because the download can still go on
       // we just ignore the file size
@@ -239,7 +218,4 @@ abstract class Downloader {
     await status.dispose();
     _timer?.cancel();
   }
-
-  /// Updates the progress display (usually in the terminal).
-  void showProgress();
 }

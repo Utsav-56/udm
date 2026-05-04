@@ -15,7 +15,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:udm/downloader/downloader.dart';
-import 'package:udm/downloader/head_parser.dart';
 
 /// A downloader that uses a single HTTP stream to fetch data.
 ///
@@ -50,14 +49,7 @@ class SingleStreamDownloader extends Downloader {
 
     if (status.isCompleted) {
       timer.cancel();
-      if (stdout.hasTerminal) {
-        showFinalProgress();
-      }
       await cleanup();
-    } else {
-      if (stdout.hasTerminal) {
-        showProgress();
-      }
     }
   }
 
@@ -65,10 +57,7 @@ class SingleStreamDownloader extends Downloader {
   Future<void> start() async {
     await init();
 
-    logBuffer.writeInfo("Starting download...");
     status.markStarted();
-    logBuffer.cleanln(5); // 5 for those header info lines
-    logBuffer.clean();
 
     final request = await _client.getUrl(url);
     final response = await request.close();
@@ -101,36 +90,5 @@ class SingleStreamDownloader extends Downloader {
     _client.close();
   }
 
-  @override
-  void showProgress() {
-    if (isInitialising) return;
 
-    final buffer = StringBuffer();
-
-    // Line 1: Filename and Size
-    buffer.writeln("File: $filename | (${status.sizeLeftText})");
-
-    // Line 2: The actual Progress Bar
-    // Using status.showProgress() or makeProgressBar()
-    buffer.writeln(status.makeProgressBar());
-
-    // Line 3: Controls menu
-    buffer.write("\nControls: [p] Pause | [r] Resume | [c] Cancel");
-
-    final output = buffer.toString();
-    logBuffer.cleanLastLinesAndPrint(output);
-  }
-
-  @override
-  void showFinalProgress() {
-    StringBuffer buffer = StringBuffer();
-
-    buffer.writeln("Downloaded: $filename ($absolutePath)");
-    buffer.writeln(
-      "Time Taken: ${status.timeTaken} || Average Speed: ${status.averageSpeedText}",
-    );
-
-    final output = buffer.toString();
-    logBuffer.cleanLastLinesAndPrint(output);
-  }
 }

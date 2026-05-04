@@ -29,7 +29,7 @@ enum WorkerMessageType {
   signal,
 
   /// Initial connection setup to exchange [SendPort]s.
-  handshake
+  handshake,
 }
 
 /// Control signals sent from the main isolate to worker isolates.
@@ -41,7 +41,7 @@ enum SignalType {
   resume,
 
   /// Terminate the worker and cleanup resources.
-  cancel
+  cancel,
 }
 
 /// Base class for all messages sent between the main isolate and workers.
