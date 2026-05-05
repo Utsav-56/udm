@@ -33,6 +33,8 @@ class SingleStreamDownloader extends Downloader {
     required super.url,
     required super.headerInfo,
     super.config,
+    super.status,
+    super.isInitCompleted,
     HttpClient? client,
   }) : _client =
            client ??

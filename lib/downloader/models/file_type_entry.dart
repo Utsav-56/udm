@@ -47,7 +47,15 @@ class FileTypePreference {
 
   /// this is a file read by defaul
   // each time the config is requested the file must be read so that we ensure we have latest change from file
-  FileTypePreference({this.types = const []});
+  const FileTypePreference._({this.types = const []});
+
+  /// Creates a [FileTypePreference] from a file.
+  ///
+  /// If no [types] are provided, the file types are read from the default configuration file.
+  ///
+  /// We dont cache the from file to ensure the latest file state is got.
+  factory FileTypePreference({List<FileTypeEntry>? types}) =>
+      types == null ? FileTypePreference.fromFile() : FileTypePreference._(types: types);
 
   /// Returns the path to the file types configuration file.
   static String get _filePath =>
@@ -90,13 +98,13 @@ class FileTypePreference {
     return null;
   }
 
-  String? getPreferredSaveDirForType(String? type) {
-    if (type == null) {
+  String? getPreferredSaveDirForType(String? typeName) {
+    if (typeName == null) {
       return null;
     }
-    for (var type in types) {
-      if (type.name == type) {
-        return type.preferredSaveDir;
+    for (var entry in types) {
+      if (entry.name == typeName) {
+        return entry.preferredSaveDir;
       }
     }
     return null;

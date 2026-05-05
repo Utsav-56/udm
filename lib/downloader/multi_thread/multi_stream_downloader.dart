@@ -73,7 +73,14 @@ class MultiStreamDownload extends Downloader {
     _workerSendPorts.clear();
     _finishedWorkerIndexes.clear();
 
-    _workerRanges.addAll(fileSize.divideIntoParts(threadCounnt));
+    final size = fileSize;
+    if (size == null) {
+      // This should not happen if called correctly, but for safety:
+      throw StateError(
+        "Cannot initialize multi-stream workers without a known file size.",
+      );
+    }
+    _workerRanges.addAll(size.divideIntoParts(threadCounnt));
 
     for (int i = 0; i < threadCounnt; i++) {
       final range = _workerRanges[i];
@@ -83,6 +90,7 @@ class MultiStreamDownload extends Downloader {
         url: url,
         config: config,
         sendPort: _receivePort.sendPort,
+        savePath: absolutePath,
       );
       _workerStatuses[i] = DownloadStatus(totalSize: range.size, id: i);
     }
@@ -146,6 +154,20 @@ class MultiStreamDownload extends Downloader {
   @override
   Future<void> start() async {
     await init();
+
+    if (headerInfo == null || !headerInfo!.supportsMultiStream || fileSize == null) {
+      // Fallback to single stream if multi-stream is not supported
+      final singleDownloader = SingleStreamDownloader(
+        url: url.toString(),
+        headerInfo: headerInfo,
+        config: config,
+        status: this.status,
+        isInitCompleted: isInitCompleted,
+      );
+      await singleDownloader.start();
+      return;
+    }
+
     _initWorkers();
     startListeningOnRecievePort();
     status.markStarted();
@@ -158,8 +180,6 @@ class MultiStreamDownload extends Downloader {
 
     await _downloadCompleter!.future;
   }
-
-
 
   @override
   Future<void> cleanup() async {
@@ -242,7 +262,7 @@ class ChunkDownloader {
       RandomAccessFile? file;
       try {
         // Open in writeOnly mode to allow seeking to specific offsets
-        file = await File(worker.config.absoluteFilename).open(mode: FileMode.writeOnly);
+        file = await File(worker.savePath).open(mode: FileMode.writeOnly);
 
         status.markStarted();
 

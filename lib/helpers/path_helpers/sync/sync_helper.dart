@@ -233,45 +233,18 @@ mixin PathHelper {
   /// Handles platform-specific locations and respects the `XDG_DOWNLOAD_DIR`
   /// environment variable on Linux.
   String getDownloadDir() {
-    String path;
     String home = getHomeDir();
-    if (Platform.isWindows) {
-      path = '${Platform.environment['USERPROFILE']}\\Downloads';
-    } else if (Platform.isMacOS) {
-      path = '$home/Downloads';
-    } else {
-      // Linux: Check XDG standard first, then fallback
-      path = Platform.environment['XDG_DOWNLOAD_DIR'] ?? '$home/Downloads';
-    }
-
-    return path;
+    // Linux: Check XDG standard first, then fallback
+    return Platform.environment['XDG_DOWNLOAD_DIR'] ?? join(home, "Downloads");
   }
 
   /// Returns the path to the user's Documents directory.
   String getDocumentsDir() {
-    String path;
     String home = getHomeDir();
-    if (Platform.isWindows) {
-      path = '${Platform.environment['USERPROFILE']}\\Documents';
-    } else {
-      path = '$home/Documents';
-    }
 
-    return path;
+    return join(home, "Documents");
   }
 
-  Directory? _getValidatedDir(String path) {
-    try {
-      final dir = Directory(path);
-      if (dir.existsSync()) {
-        return dir;
-      }
-      return null;
-    } catch (e) {
-      _handleError(e, "Path._getValidatedDir");
-      return null;
-    }
-  }
 
   /// Returns the type of the file system entity at the given path.
   ///

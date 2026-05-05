@@ -34,7 +34,9 @@ class HeaderInfo {
   final String? filename;
 
   /// The total size of the remote file.
-  final FileSize fileSize;
+  ///
+  /// Null if the size cannot be determined from headers.
+  final FileSize? fileSize;
 
   /// Indicates whether the server supports HTTP Range requests.
   final bool acceptsRanges;
@@ -48,7 +50,7 @@ class HeaderInfo {
   /// Creates a [HeaderInfo] instance with explicit metadata values.
   const HeaderInfo({
     this.filename,
-    required this.fileSize,
+    this.fileSize,
     required this.acceptsRanges,
     this.fileExtension,
     this.contentType,
@@ -59,7 +61,10 @@ class HeaderInfo {
   /// Requires [acceptsRanges] to be true, a known [fileSize], and the size to be
   /// greater than or equal to [minMultiStreamThreshold].
   bool get supportsMultiStream =>
-      acceptsRanges && fileSize.bytes != -1 && fileSize.bytes >= minMultiStreamThreshold;
+      acceptsRanges &&
+      fileSize != null &&
+      fileSize!.bytes != -1 &&
+      fileSize!.bytes >= minMultiStreamThreshold;
 
   /// Factory constructor that parses [HeaderInfo] from an [HttpClientResponse].
   ///
@@ -106,7 +111,7 @@ class HeaderInfo {
 
     return HeaderInfo(
       filename: p.sanitizeFilename(parsedFilename),
-      fileSize: FileSize(contentLength), // -1 is handled here
+      fileSize: contentLength != -1 ? FileSize(contentLength) : null,
       acceptsRanges: acceptsRanges,
       fileExtension: extension,
       contentType: headers.value('content-type'),
@@ -115,7 +120,7 @@ class HeaderInfo {
 
   @override
   String toString() =>
-      "File: ${filename ?? 'Unknown'} | Size: ${fileSize.humanReadable} | Ranges: $acceptsRanges";
+      "File: ${filename ?? 'Unknown'} | Size: ${fileSize?.humanReadable ?? 'Unknown'} | Ranges: $acceptsRanges";
 }
 
 /// Performs an HTTP HEAD request to retrieve file metadata, with an automatic fallback to GET.

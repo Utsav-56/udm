@@ -81,8 +81,6 @@ abstract class WorkerMessage {
 
       case WorkerMessageType.handshake:
         return HandshakeMessage.fromMap(map);
-      default:
-        throw Exception("Unknown WorkerMessageType: $type");
     }
   }
 
@@ -246,6 +244,7 @@ class WorkerMessenger {
         break;
       case WorkerMessageType.signal:
         onSignalIn?.call(message as SignalMessage);
+        break;
       case WorkerMessageType.handshake:
         break;
     }

@@ -15,7 +15,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:udm/downloader/downloader.dart';
 import 'package:udm/downloader/head_parser.dart';
-import 'package:udm/downloader/models/downloader_config.dart';
+import 'package:udm/downloader/models/downloader_preference.dart';
 import 'package:udm/downloader/models/file_type_entry.dart';
 import 'package:udm/downloader/models/manager_preferences.dart';
 
@@ -28,7 +28,7 @@ class DownloadTask {
   final String url;
 
   /// Configuration settings for this specific download.
-  final DownloaderConfig config;
+  final DownloaderPreference config;
 
   /// Resolves with the created [Downloader] instance when the task is spawned.
   final Completer<Downloader> completer = Completer<Downloader>();
@@ -53,7 +53,7 @@ class DownloadManager {
   /// If [preferences] is not provided, it defaults to [ManagerPreferences.fromFile].
   DownloadManager({ManagerPreferences? preferences}) {
     this.preferences = preferences ?? ManagerPreferences.fromFile();
-    this.typePreference = FileTypePreference.fromFile();
+    typePreference = FileTypePreference.fromFile();
   }
 
   /// refreshes the preferences
@@ -83,7 +83,7 @@ class DownloadManager {
   ///
   /// Returns a [Future] that completes with the instantiated [Downloader]
   /// once the task starts executing.
-  Future<Downloader> enqueue(String url, DownloaderConfig config) {
+  Future<Downloader> enqueue(String url, DownloaderPreference config) {
     final task = DownloadTask(url: url, config: config);
     _queue.add(task);
     _processQueue();
@@ -104,7 +104,6 @@ class DownloadManager {
 
     try {
       final downloader = await _spawnDownloader(task.url, task.config);
-      spawnedDownloaders[downloader.id] = downloader;
       task.completer.complete(downloader);
 
       // We start the download and wait for it to finish before freeing the slot
@@ -125,7 +124,7 @@ class DownloadManager {
   /// This method performs an initial HEAD request to gather file metadata. It
   /// then spawns a [MultiStreamDownload] if supported by the server, otherwise
   /// defaulting to a [SingleStreamDownloader].
-  Future<Downloader> _spawnDownloader(String url, DownloaderConfig config) async {
+  Future<Downloader> _spawnDownloader(String url, DownloaderPreference config) async {
     final client = HttpClient()
       ..maxConnectionsPerHost = preferences.maxConnectionsPerHost
       ..connectionTimeout = Duration(seconds: preferences.timeout)

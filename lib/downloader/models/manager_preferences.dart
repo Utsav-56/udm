@@ -14,7 +14,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:path/path.dart' as p;
-import 'package:udm/downloader/models/downloader_config.dart';
+import 'package:udm/downloader/models/downloader_preference.dart';
 import 'package:udm/helpers/path_helpers/path_helpers.dart' as path_helper;
 
 part 'manager_preferences.freezed.dart';
@@ -77,13 +77,13 @@ abstract class ManagerPreferences with _$ManagerPreferences {
   factory ManagerPreferences.fromJson(Map<String, dynamic> json) =>
       _$ManagerPreferencesFromJson(json);
 
-  /// Generates a [DownloaderConfig] based on the current preferences.
-  DownloaderConfig get downloaderConfig => DownloaderConfig(
+  /// Generates a [DownloaderPreference] based on the current preferences.
+  DownloaderPreference get downloaderConfig => DownloaderPreference(
     cookie: cookie,
     downloadType: DownloadType.smart,
     headers: customHeaders,
     threadCount: threadCount,
-    saveDir: savePath,
+    outputDir: savePath,
     preferResolvedExtension: preferServerFileExtension,
   );
 

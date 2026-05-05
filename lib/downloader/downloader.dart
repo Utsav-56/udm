@@ -16,8 +16,9 @@ import 'dart:io';
 
 import 'package:udm/downloader/models/download_status.dart';
 import 'package:udm/downloader/head_parser.dart';
+import 'package:udm/downloader/models/file_type_entry.dart';
 import 'package:udm/helpers/path_helpers/path_helpers.dart';
-import 'package:udm/downloader/models/downloader_config.dart';
+import 'package:udm/downloader/models/downloader_preference.dart';
 
 export './models/download_status.dart';
 export 'multi_thread/multi_stream_downloader.dart';
@@ -44,13 +45,33 @@ abstract class Downloader {
   /// Configuration settings for this downloader instance.
   ///
   /// Includes options for output directory and naming preferences.
-  late final DownloaderConfig config;
+  late final DownloaderPreference config;
 
   // State and progress Tracking
   /// Current state and progress metrics of the download.
   ///
   /// Tracks bytes downloaded, speed, estimated time remaining, and status flags.
-  late final DownloadStatus status;
+  DownloadStatus? _status;
+
+  /// status setter
+  ///
+  /// can be used to update the status of the download
+  /// or if the download is proxied, can be used to update the status of the download
+  set status(DownloadStatus? value) {
+    // we cant set this if it is already set
+    if (_status != null) {
+      print(
+        "Status is already set, trying to update it with ${value?.id}, this is not possible so we wont update it",
+      );
+      return;
+    }
+
+    if (value == null) return;
+    _status = value;
+  }
+
+  /// status getter
+  DownloadStatus get status => _status!;
 
   /// The remote URL of the file to be downloaded.
   late final Uri url;
@@ -58,56 +79,62 @@ abstract class Downloader {
   /// Information retrieved from the server headers.
   ///
   /// Contains details such as file size, filename, and range support.
-  final HeaderInfo headerInfo;
+  /// can be null if the head request  failed or server does not provide header info.
+  HeaderInfo? headerInfo;
 
   /// A unique timestamped identifier for this downloader instance.
-  late final String id;
+  final int id = DateTime.now().millisecondsSinceEpoch;
 
   /// Creates a new [Downloader] instance for the given [url] and [headerInfo].
   ///
   /// Optional [config] can be provided to customize download behavior. If omitted,
-  /// [DownloaderConfig.defaultInstance] is used.
-  Downloader({required String url, required this.headerInfo, DownloaderConfig? config}) {
-    id = DateTime.now().millisecondsSinceEpoch.toString();
+  /// [DownloaderPreference.defaultInstance] is used.
+  Downloader({
+    required String url,
+    required this.headerInfo,
+    DownloaderPreference? config,
+
+    /// if status is provided, it means that we may be proxying the download
+    ///
+    /// Probable usecase is when we leave the download and come back later and
+    /// resume the download
+    /// the status will tell us the current state of the download
+    ///
+    /// also if the multi thread was not supported and the progress needs  to be proxied
+    /// use this in your own caution as improper status may lead to corrupted file.
+    ///
+    /// note: only the very first status is accepted, any subsequent status is ignored.
+    DownloadStatus? status,
+
+    /// useful if the downloader is resuming
+    bool isInitCompleted = false,
+  }) {
     this.url = Uri.parse(url);
-    this.config = config ?? DownloaderConfig.defaultInstance;
+    this.status = status;
 
-    _resolveFilename();
-
-    // print(
-    //   "Created Downloader with id: $id \n for url: ${url} \n for filename: ${this.config.filename}",
-    // );
-  }
-
-  void _resolveFilename() {
-    String? resolvedName;
-
-    if (!config.isFilenameSet) {
-      // If user hasn't provided a filename, try header info filename
-      resolvedName = headerInfo.filename;
-    } else {
-      // User provided a filename, let's handle the extensions
-      resolvedName = config.filename;
-
-      final String userExt = p.extension(resolvedName) ?? "";
-      final String headerExt = headerInfo.fileExtension ?? "";
-
-      if (headerExt.isNotEmpty) {
-        if (userExt.isEmpty) {
-          // No extension in user provided filename, append header extension
-          resolvedName = "$resolvedName$headerExt";
-        } else if (config.preferResolvedExtension && userExt != headerExt) {
-          // User provided extension but flag says prefer resolved (append)
-          // e.g. demo.archive -> demo.archive.zip
-          resolvedName = "$resolvedName$headerExt";
-        }
-      }
-    }
-
-    if (resolvedName != null && resolvedName.isNotEmpty) {
-      config.filename = resolvedName;
+    if (isInitCompleted) {
+      _initCompleter.complete();
     }
   }
+
+  /// returns true if the init completer is completed
+  bool get isInitCompleted => _initCompleter.isCompleted;
+
+  /// returns a resolved filename according to the priority chain as below
+  /// [DownloaderPreference] => [HeaderInfo] => default
+  String get resolvedFilename =>
+      config.fileName ?? headerInfo?.filename ?? 'UDM_DOWNLOADED_FILE';
+
+  String get fileType =>
+      FileTypePreference().getType(p.extension(resolvedFilename)) ?? "";
+
+  /// returns a resolved output directory according to the priority chain as below
+  /// [DownloaderPreference] => default
+  String get resolvedOutputDir =>
+      config.outputDir ?? p.join(p.getDownloadDir(), fileType);
+
+  /// the absolute filename of the file to be downloaded.
+  String get absolutePath => p.join(resolvedOutputDir, resolvedFilename);
 
   /// A stream that emits [DownloadStatus] updates during the download process.
   Stream<DownloadStatus> get progressStream => status.stream;
@@ -115,7 +142,7 @@ abstract class Downloader {
 
   /// The interval at which progress is synchronized and [timerFunction] is called.
   ///
-  /// Derived from [DownloaderConfig.progressSyncInterval].
+  /// Derived from [DownloaderPreference.progressSyncInterval].
   Duration get timerInterval => Duration(milliseconds: config.progressSyncInterval);
 
   /// Returns `true` if the download is currently paused.
@@ -133,14 +160,8 @@ abstract class Downloader {
   /// Returns `true` if the downloader is in the initialization phase.
   bool get isInitialising => status.isInitialising;
 
-  /// The resolved filename used for saving the download.
-  String get filename => config.filename;
-
-  /// The absolute file system path where the file will be saved.
-  String get absolutePath => config.absoluteFilename;
-
   /// The total size of the file in bytes, as reported by the server.
-  int get fileSize => headerInfo.fileSize.bytes;
+  int? get fileSize => headerInfo?.fileSize?.bytes;
 
   final Completer<void> _initCompleter = Completer<void>();
 
@@ -182,10 +203,19 @@ abstract class Downloader {
   ///
   /// Throws an exception if head request fails or file cannot be created.
   Future<void> init() async {
-    status = DownloadStatus(totalSize: headerInfo.fileSize.bytes);
+    if (isInitCompleted) return;
 
-    // Lock the filename and path before starting any file operations
-    config.resolveFinalPath();
+    // If headerInfo is missing, attempt to fetch it now
+    if (headerInfo == null) {
+      try {
+        headerInfo = await sendHeadRequest(url);
+      } catch (e) {
+        // Fallback or ignore? The user said "if the header info is not given... downloader is responsible to fetch it"
+        // If it still fails, we continue with null headerInfo and handle it gracefully
+      }
+    }
+
+    status = DownloadStatus(totalSize: fileSize);
 
     await _prepareFile();
 
@@ -206,15 +236,18 @@ abstract class Downloader {
       await file.parent.create(recursive: true);
     }
 
-    if (headerInfo.fileSize.bytes == -1) {
+    final size = fileSize;
+
+    if (size == null || size <= 0) {
       // we dont know the file size so we cant prepare but we wont stop
       // because the download can still go on
-      // we just ignore the file size
+      // we just ignore the file size and open in write mode
+      _raf = await file.open(mode: FileMode.writeOnly);
       return;
     }
 
     _raf = await file.open(mode: FileMode.writeOnly);
-    await _raf!.truncate(headerInfo.fileSize.bytes);
+    await _raf!.truncate(size);
   }
 
   /// Releases resources used by the downloader.

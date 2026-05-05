@@ -13,7 +13,7 @@ library;
 import 'dart:isolate';
 
 import 'package:udm/helpers/extensions/int_extensions.dart';
-import 'package:udm/downloader/models/downloader_config.dart';
+import 'package:udm/downloader/models/downloader_preference.dart';
 import 'package:udm/models/range.dart';
 
 /// Encapsulates the task parameters for a worker isolate.
@@ -29,13 +29,16 @@ class WorkerChunk {
   final Range range;
 
   /// Global downloader configuration settings.
-  final DownloaderConfig config;
+  final DownloaderPreference config;
 
   /// The port used to send progress and status updates to the main isolate.
   final SendPort sendPort;
 
   /// The source URL of the file.
   final Uri url;
+
+  /// The absolute path to the local file.
+  final String savePath;
 
   /// Creates a [WorkerChunk] with mandatory parameters.
   const WorkerChunk({
@@ -44,6 +47,7 @@ class WorkerChunk {
     required this.config,
     required this.url,
     required this.sendPort,
+    required this.savePath,
   });
 
   /// Returns the size of the byte range in bytes.
@@ -56,13 +60,13 @@ class WorkerChunk {
 
   /// Creates a copy of this [WorkerChunk] with optional updated fields.
   ///
-  /// Useful for retrying a failed chunk with a modified [newRange].
   WorkerChunk copyWith({
     Range? newRange,
     int? index,
-    DownloaderConfig? config,
+    DownloaderPreference? config,
     SendPort? sendPort,
     Uri? url,
+    String? savePath,
   }) {
     return WorkerChunk(
       index: index ?? this.index,
@@ -70,6 +74,7 @@ class WorkerChunk {
       config: config ?? this.config,
       url: url ?? this.url,
       sendPort: sendPort ?? this.sendPort,
+      savePath: savePath ?? this.savePath,
     );
   }
 }

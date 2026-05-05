@@ -46,7 +46,7 @@ class DownloadStatus {
   ///
   /// An optional [id] can be provided; otherwise, a unique ID is generated
   /// based on the current timestamp.
-  DownloadStatus({required this.totalSize, int? id}) {
+  DownloadStatus({this.totalSize, int? id}) {
     this.id = id ?? DateTime.now().millisecond.toInt();
   }
 
@@ -54,7 +54,7 @@ class DownloadStatus {
   ///
   /// Used for state restoration or communication between isolates.
   factory DownloadStatus.fromMap(Map<String, dynamic> map) {
-    map.ensureKeyExists(["totalSize", "id", "state"]);
+    map.ensureKeyExists(["id", "state"]);
     return DownloadStatus(totalSize: map["totalSize"], id: map["id"])
       ..totalBytesDownloaded = map["totalBytesDownloaded"] ?? 0
       ..state = DownloadState.values[map["state"]];
@@ -153,7 +153,9 @@ class DownloadStatus {
   late final int id;
 
   /// The total expected size of the download (or chunk) in bytes.
-  final int totalSize;
+  ///
+  /// Can be null if the total size is unknown (e.g., from a stream).
+  final int? totalSize;
 
   /// Total number of bytes downloaded and verified so far.
   int totalBytesDownloaded = 0;
@@ -166,23 +168,27 @@ class DownloadStatus {
 
   // Logic Helpers
   /// Remaining bytes to be downloaded.
-  int get bytesLeft => totalSize - totalBytesDownloaded;
+  ///
+  /// Returns null if [totalSize] is unknown.
+  int? get bytesLeft => totalSize != null ? totalSize! - totalBytesDownloaded : null;
 
   /// Progress as a percentage (0.0 to 100.0).
   double get progressPercent =>
-      totalSize > 0 ? (totalBytesDownloaded / totalSize) * 100 : 0;
+      (totalSize != null && totalSize! > 0)
+          ? (totalBytesDownloaded / totalSize!) * 100
+          : 0;
 
   /// Human-readable speed string (e.g., "1.2 MB/s").
   String get speedText => bytesPerSecond.toInt().humanReadableSpeed;
 
   /// Formatted string representing downloaded size vs total size.
   ///
-  /// Example: "10.5 MB / 100.0 MB". Returns "Unknown Size" if total size is invalid.
+  /// Example: "10.5 MB / 100.0 MB". Returns just downloaded size if total is unknown.
   String get sizeLeftText {
-    if (totalSize <= 0) return "Unknown Size";
-
     final downloaded = totalBytesDownloaded.asSuitableSizeUnit;
-    final total = totalSize.asSuitableSizeUnit;
+    if (totalSize == null || totalSize! <= 0) return downloaded;
+
+    final total = totalSize!.asSuitableSizeUnit;
     return "$downloaded / $total";
   }
 
@@ -298,12 +304,15 @@ class DownloadStatus {
 
   /// Estimated Time Arrival (ETA) as a readable string.
   ///
-  /// Returns "Paused" or "N/A" if calculations are not possible.
+  /// Returns "Paused", "N/A", or "Unknown" if calculations are not possible.
   String get eta {
     if (state == DownloadState.paused) return "Paused";
-    if (bytesPerSecond <= 0) return "N/A left";
+    if (bytesPerSecond <= 0 || totalSize == null) return "N/A left";
 
-    final secondsLeft = (bytesLeft / bytesPerSecond).ceil();
+    final remaining = bytesLeft;
+    if (remaining == null) return "N/A left";
+
+    final secondsLeft = (remaining / bytesPerSecond).ceil();
     // Assuming you have this extension from before
     return secondsLeft.asReadableTimeUnit;
   }
@@ -325,7 +334,7 @@ class DownloadStatus {
     // Normalize to bytes per second: (bytes / ms) * 1000
     bytesPerSecond = (delta / interval.inMilliseconds) * 1000;
 
-    if (totalBytesDownloaded >= totalSize && totalSize > 0) {
+    if (totalSize != null && totalSize! > 0 && totalBytesDownloaded >= totalSize!) {
       markCompleted();
     }
 

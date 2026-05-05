@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:udm/downloader/downloader.dart';
-import 'package:udm/downloader/models/downloader_config.dart';
+import 'package:udm/downloader/models/downloader_preference.dart';
 
 const String version = '0.0.1';
 
@@ -32,9 +32,9 @@ void printUsage(ArgParser argParser) {
 /// **Why**: Orchestrates the argument parsing, configuration loading, and downloader initiation.
 /// **How**: Run via `dart bin/udm.dart` or after compiling to an executable.
 void main(List<String> arguments) async {
-  final config = DownloaderConfig(
-    // filename: "demo-file.zip",
-    saveDir: Directory.current.path,
+  final config = DownloaderPreference(
+    // fileName: "demo-file.zip",
+    outputDir: Directory.current.path,
   );
 
   const demoUrl = "https://releases.ubuntu.com/26.04/ubuntu-26.04-desktop-amd64.iso";
