@@ -82,8 +82,8 @@ class DownloadManager {
   ///
   /// Returns a [Future] that completes with the instantiated [Downloader]
   /// once the task starts executing.
-  Future<Downloader> enqueue(String url, DownloaderPreference config) {
-    final task = DownloadTask(url: url, config: config);
+  Future<Downloader> enqueue(String url, {DownloaderPreference? config}) {
+    final task = DownloadTask(url: url, config: config ?? preferences.downloaderConfig);
     _queue.add(task);
     _processQueue();
     return task.completer.future;

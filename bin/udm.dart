@@ -41,5 +41,5 @@ void main(List<String> arguments) async {
 
   final manager = DownloadManager();
 
-  await manager.enqueue(demoUrl, config);
+  await manager.enqueue(demoUrl);
 }
