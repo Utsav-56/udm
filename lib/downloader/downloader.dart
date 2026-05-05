@@ -91,7 +91,7 @@ abstract class Downloader {
   /// [DownloaderPreference.defaultInstance] is used.
   Downloader({
     required String url,
-    required this.headerInfo,
+    this.headerInfo,
     DownloaderPreference? config,
 
     /// if status is provided, it means that we may be proxying the download
@@ -168,8 +168,8 @@ abstract class Downloader {
   /// The underlying [RandomAccessFile] used for disk operations.
   ///
   /// Throws a [StateError] if accessed before initialization.
-  RandomAccessFile? _raf;
-  RandomAccessFile get raf => _raf!;
+  RandomAccessFile? fileHandle;
+  RandomAccessFile get raf => fileHandle!;
 
   /// Orchestrates the download start logic.
   ///
@@ -203,25 +203,37 @@ abstract class Downloader {
   ///
   /// Throws an exception if head request fails or file cannot be created.
   Future<void> init() async {
-    if (isInitCompleted) return;
+    if (_isInitialized) return;
+    _isInitialized = true;
 
     // If headerInfo is missing, attempt to fetch it now
     if (headerInfo == null) {
       try {
-        headerInfo = await sendHeadRequest(url);
+        final client = HttpClient()
+          ..connectionTimeout = Duration(seconds: config.timeout)
+          ..idleTimeout = Duration(seconds: config.idleTimeout)
+          ..userAgent = config.userAgent;
+        headerInfo = await sendHeadRequest(url, client: client);
+        client.close();
       } catch (e) {
         // Fallback or ignore? The user said "if the header info is not given... downloader is responsible to fetch it"
         // If it still fails, we continue with null headerInfo and handle it gracefully
       }
     }
 
-    status = DownloadStatus(totalSize: fileSize);
+    if (_status == null) {
+      status = DownloadStatus(totalSize: fileSize);
+    } else if (_status!.totalSize == null) {
+      _status!.totalSize = fileSize;
+    }
 
     await _prepareFile();
 
     _timer = Timer.periodic(timerInterval, timerFunction);
 
-    _initCompleter.complete();
+    if (!_initCompleter.isCompleted) {
+      _initCompleter.complete();
+    }
   }
 
   /// Allocates space on the disk and opens the file for writing.
@@ -242,20 +254,22 @@ abstract class Downloader {
       // we dont know the file size so we cant prepare but we wont stop
       // because the download can still go on
       // we just ignore the file size and open in write mode
-      _raf = await file.open(mode: FileMode.writeOnly);
+      fileHandle = await file.open(mode: FileMode.writeOnly);
       return;
     }
 
-    _raf = await file.open(mode: FileMode.writeOnly);
-    await _raf!.truncate(size);
+    fileHandle = await file.open(mode: FileMode.writeOnly);
+    await fileHandle!.truncate(size);
   }
+
+  bool _isInitialized = false;
 
   /// Releases resources used by the downloader.
   ///
   /// Closes the [RandomAccessFile], disposes the [status] stream, and cancels
   /// the internal timer.
   Future<void> cleanup() async {
-    await _raf?.close();
+    await fileHandle?.close();
     await status.dispose();
     _timer?.cancel();
   }

@@ -85,6 +85,9 @@ abstract class ManagerPreferences with _$ManagerPreferences {
     threadCount: threadCount,
     outputDir: savePath,
     preferResolvedExtension: preferServerFileExtension,
+    timeout: timeout,
+    idleTimeout: idleTimeout,
+    userAgent: userAgent,
   );
 
   /// The default absolute path where preferences are stored on disk.

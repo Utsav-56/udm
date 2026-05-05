@@ -16,7 +16,9 @@ import 'dart:isolate';
 import 'dart:math';
 
 import 'package:udm/downloader/downloader.dart';
+import 'package:udm/downloader/head_parser.dart';
 import 'package:udm/downloader/models/messenger.dart';
+import 'package:udm/downloader/models/downloader_preference.dart';
 import 'package:udm/downloader/models/worker_chunk.dart';
 import 'package:udm/helpers/extensions/int_extensions.dart';
 import 'package:udm/models/range.dart';
@@ -34,9 +36,13 @@ import 'package:udm/models/range.dart';
 /// ```
 class MultiStreamDownload extends Downloader {
   /// Creates a [MultiStreamDownload] instance for the given [url].
-  MultiStreamDownload({required super.url, required super.headerInfo, super.config}) {
-    threadCounnt = config.threadCount;
-  }
+  MultiStreamDownload({
+    required super.url,
+    super.headerInfo,
+    super.config,
+    super.status,
+    super.isInitCompleted,
+  });
 
   /// Number of concurrent worker threads to spawn.
   late final int threadCounnt;
@@ -155,13 +161,19 @@ class MultiStreamDownload extends Downloader {
   Future<void> start() async {
     await init();
 
-    if (headerInfo == null || !headerInfo!.supportsMultiStream || fileSize == null) {
+    if (headerInfo == null ||
+        !headerInfo!.supportsMultiStream ||
+        fileSize == null ||
+        config.downloadType == DownloadType.single) {
       // Fallback to single stream if multi-stream is not supported
+      await fileHandle?.close();
+      fileHandle = null;
+
       final singleDownloader = SingleStreamDownloader(
         url: url.toString(),
         headerInfo: headerInfo,
         config: config,
-        status: this.status,
+        status: status,
         isInitCompleted: isInitCompleted,
       );
       await singleDownloader.start();
@@ -171,6 +183,10 @@ class MultiStreamDownload extends Downloader {
     _initWorkers();
     startListeningOnRecievePort();
     status.markStarted();
+
+    // Release our file handle as workers will manage their own file handles
+    await fileHandle?.close();
+    fileHandle = null;
 
     _downloadCompleter = Completer<void>();
 
@@ -326,7 +342,10 @@ class ChunkDownloader {
 /// It offloads I/O and network operations to a separate thread to ensure main
 /// isolate responsiveness.
 Future<void> downloadWorker(WorkerChunk worker) async {
-  final client = HttpClient();
+  final client = HttpClient()
+    ..connectionTimeout = Duration(seconds: worker.config.timeout)
+    ..idleTimeout = Duration(seconds: worker.config.idleTimeout)
+    ..userAgent = worker.config.userAgent;
 
   final DownloadStatus status = DownloadStatus(
     totalSize: worker.range.size,

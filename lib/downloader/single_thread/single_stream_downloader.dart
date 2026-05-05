@@ -31,7 +31,7 @@ class SingleStreamDownloader extends Downloader {
   /// Creates a [SingleStreamDownloader] for the given [url].
   SingleStreamDownloader({
     required super.url,
-    required super.headerInfo,
+    super.headerInfo,
     super.config,
     super.status,
     super.isInitCompleted,
@@ -39,9 +39,11 @@ class SingleStreamDownloader extends Downloader {
   }) : _client =
            client ??
            (HttpClient()
-             ..maxConnectionsPerHost = 3
-             ..connectionTimeout = const Duration(seconds: 10)
-             ..idleTimeout = const Duration(seconds: 5));
+             ..maxConnectionsPerHost = 4
+             ..connectionTimeout = Duration(seconds: config?.timeout ?? 10)
+             ..idleTimeout = Duration(seconds: config?.idleTimeout ?? 5)
+             ..userAgent = config?.userAgent ??
+                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3");
 
   /// Shared HTTP client for the single stream request.
   final HttpClient _client;

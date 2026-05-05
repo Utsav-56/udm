@@ -12,7 +12,6 @@
 library;
 
 import 'dart:async';
-import 'dart:io';
 import 'package:udm/downloader/downloader.dart';
 import 'package:udm/downloader/head_parser.dart';
 import 'package:udm/downloader/models/downloader_preference.dart';
@@ -125,30 +124,7 @@ class DownloadManager {
   /// then spawns a [MultiStreamDownload] if supported by the server, otherwise
   /// defaulting to a [SingleStreamDownloader].
   Future<Downloader> _spawnDownloader(String url, DownloaderPreference config) async {
-    final client = HttpClient()
-      ..maxConnectionsPerHost = preferences.maxConnectionsPerHost
-      ..connectionTimeout = Duration(seconds: preferences.timeout)
-      ..idleTimeout = Duration(seconds: preferences.idleTimeout)
-      ..userAgent = preferences.userAgent;
-
-    final headerInfo = await sendHeadRequest(Uri.parse(url), client: client);
-
-    Downloader downloader;
-
-    if (headerInfo.supportsMultiStream && config.downloadType != DownloadType.single) {
-      // Close the client since multi-stream isolate manages its own network connections
-      client.close();
-      downloader = MultiStreamDownload(url: url, headerInfo: headerInfo, config: config);
-    } else {
-      // Reuse the existing client for the single stream download
-      downloader = SingleStreamDownloader(
-        url: url,
-        headerInfo: headerInfo,
-        config: config,
-        client: client,
-      );
-    }
-
-    return downloader;
+    // MultiStreamDownload now handles initialization (HEAD request) and smart fallback internally
+    return MultiStreamDownload(url: url, config: config);
   }
 }

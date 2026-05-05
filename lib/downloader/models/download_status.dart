@@ -155,7 +155,7 @@ class DownloadStatus {
   /// The total expected size of the download (or chunk) in bytes.
   ///
   /// Can be null if the total size is unknown (e.g., from a stream).
-  final int? totalSize;
+  int? totalSize;
 
   /// Total number of bytes downloaded and verified so far.
   int totalBytesDownloaded = 0;

@@ -97,6 +97,12 @@ abstract class DownloaderPreference with _$DownloaderPreference {
     /// This interval also dictates the frequency of [Downloader.timerFunction]
     /// execution. Defaults to 500ms.
     @Default(500) int progressSyncInterval,
+    @Default(10) int timeout,
+    @Default(5) int idleTimeout,
+    @Default(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+    )
+    String userAgent,
 
     /// Optional HTTP headers to include in every request (e.g., User-Agent, Authorization).
     @Default({}) Map<String, String> headers,
