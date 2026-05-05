@@ -27,3 +27,13 @@ extension MapExtension on Map<String, dynamic> {
     }
   }
 }
+
+extension IterableHelper<T> on Iterable<T> {
+  Map<int, T> toIndexedMap() {
+    final map = <int, T>{};
+    for (var i = 0; i < length; i++) {
+      map[i] = elementAt(i);
+    }
+    return map;
+  }
+}

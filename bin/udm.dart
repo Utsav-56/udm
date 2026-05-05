@@ -41,9 +41,5 @@ void main(List<String> arguments) async {
 
   final manager = DownloadManager();
 
-  final Downloader dldr = await manager.enqueue(demoUrl, config);
-
-  dldr.progressStream.listen((event) {
-    print(event.progressPercent);
-  });
+  await manager.enqueue(demoUrl, config);
 }

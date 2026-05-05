@@ -134,7 +134,12 @@ class HeaderInfo {
 /// **Throws**:
 /// - [SocketException] if the server is unreachable.
 /// - [HttpException] if the fallback GET request also fails.
-Future<HeaderInfo> sendHeadRequest(Uri url, [HttpClient? client]) async {
+Future<HeaderInfo> sendHeadRequest(
+  Uri url, {
+  HttpClient? client,
+  Map<String, String>? headers,
+  String? cookies,
+}) async {
   // track if the client was self made or from param
   // in case of self made we dispose the client when request is finished
   bool isClientSelfMade = false;
@@ -146,11 +151,14 @@ Future<HeaderInfo> sendHeadRequest(Uri url, [HttpClient? client]) async {
 
     isClientSelfMade = true;
   }
-
   try {
     // We use a GET request with a range of 0-0 if HEAD fails,
     // as some servers (like some AWS S3 configs) block HEAD requests.
     final request = await client.headUrl(url);
+
+    headers?.forEach((k, v) {
+      request.headers.set(k, v);
+    });
 
     // Ensure we follow redirects to get the actual file headers
     request.followRedirects = true;
