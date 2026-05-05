@@ -96,6 +96,14 @@ class HeaderInfo {
       extension = p.extension(requestUri.path);
     }
 
+    // Filename Fallback: If still null, try last segment of URI
+    if (parsedFilename == null || parsedFilename.isEmpty) {
+      final segments = requestUri.pathSegments.where((s) => s.isNotEmpty).toList();
+      if (segments.isNotEmpty) {
+        parsedFilename = segments.last;
+      }
+    }
+
     return HeaderInfo(
       filename: p.sanitizeFilename(parsedFilename),
       fileSize: FileSize(contentLength), // -1 is handled here

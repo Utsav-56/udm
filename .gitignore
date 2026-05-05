@@ -5,3 +5,26 @@
 demo-*
 .antigravityrc
 big-buck-bunny.*
+
+#ubuntu iso
+*.iso
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+*.tar.lz4
+*.tar.zst
+*.tar.zst
+*.tar.zst
+*.tar.zst
+*.tar.zst
+*.tar.zst
+*.tar.zst
+
+demo-*
+UDM-*

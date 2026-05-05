@@ -48,7 +48,11 @@ class DownloaderConfig {
   /// Explicitly set filename provided during instantiation.
   String? _explicitFilename;
 
-
+  /// The cached absolute path after resolving uniqueness.
+  ///
+  /// **Why**: Prevents multiple unique names (e.g., file(1).zip, file(2).zip)
+  /// from being generated if workers access this getter concurrently.
+  String? _resolvedAbsolutePath;
 
   /// The strategy used for fetching the file (e.g., [DownloadType.smart]).
   final DownloadType downloadType;
@@ -59,8 +63,6 @@ class DownloaderConfig {
   /// This interval also dictates the frequency of [Downloader.timerFunction]
   /// execution. Defaults to 500ms.
   final int progressSyncInterval;
-
-
 
   /// The number of concurrent connections (threads/isolates) to use for
   /// multi-threaded downloads.
@@ -107,11 +109,25 @@ class DownloaderConfig {
   }
 
   /// Calculates the absolute file path, ensuring uniqueness to avoid overwriting.
+  ///
+  /// If the path has already been resolved (via [resolveFinalPath]), it returns
+  /// the cached value. This is critical for multi-threaded downloads where
+  /// worker isolates must all write to the same physical file.
   String get absoluteFilename {
+    if (_resolvedAbsolutePath != null) return _resolvedAbsolutePath!;
+
     final baseDir = outputDir;
     final name = filename;
     // We calculate uniqueness at the moment the path is requested
     return p.getUniqueName(p.join(baseDir, name));
+  }
+
+  /// Locks in a unique absolute path for this download.
+  ///
+  /// This should be called once by the main isolate (usually in [Downloader.init])
+  /// before any file operations or worker spawning occurs.
+  void resolveFinalPath() {
+    _resolvedAbsolutePath = absoluteFilename;
   }
 
   /// Resolves the current output directory based on hierarchy (Explicit > Preferred > System Default).

@@ -31,9 +31,9 @@ void printUsage(ArgParser argParser) {
 ///
 /// **Why**: Orchestrates the argument parsing, configuration loading, and downloader initiation.
 /// **How**: Run via `dart bin/udm.dart` or after compiling to an executable.
-void main(List<String> arguments) {
+void main(List<String> arguments) async {
   final config = DownloaderConfig(
-    filename: "demo-file.zip",
+    // filename: "demo-file.zip",
     saveDir: Directory.current.path,
   );
 
@@ -41,8 +41,9 @@ void main(List<String> arguments) {
 
   final manager = DownloadManager();
 
-  for (int i = 0; i < 5; i++) {
-    manager.enqueue(demoUrl, config);
-  }
+  final Downloader dldr = await manager.enqueue(demoUrl, config);
 
+  dldr.progressStream.listen((event) {
+    print(event.progressPercent);
+  });
 }

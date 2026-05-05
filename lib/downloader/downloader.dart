@@ -71,7 +71,12 @@ abstract class Downloader {
     id = DateTime.now().millisecondsSinceEpoch.toString();
     this.url = Uri.parse(url);
     this.config = config ?? DownloaderConfig.defaultInstance;
+
     _resolveFilename();
+
+    // print(
+    //   "Created Downloader with id: $id \n for url: ${url} \n for filename: ${this.config.filename}",
+    // );
   }
 
   void _resolveFilename() {
@@ -178,6 +183,9 @@ abstract class Downloader {
   /// Throws an exception if head request fails or file cannot be created.
   Future<void> init() async {
     status = DownloadStatus(totalSize: headerInfo.fileSize.bytes);
+
+    // Lock the filename and path before starting any file operations
+    config.resolveFinalPath();
 
     await _prepareFile();
 
