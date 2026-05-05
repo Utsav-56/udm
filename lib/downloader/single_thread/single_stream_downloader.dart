@@ -34,11 +34,12 @@ class SingleStreamDownloader extends Downloader {
     required super.headerInfo,
     super.config,
     HttpClient? client,
-  }) : _client = client ??
-            (HttpClient()
-              ..maxConnectionsPerHost = 3
-              ..connectionTimeout = const Duration(seconds: 10)
-              ..idleTimeout = const Duration(seconds: 5));
+  }) : _client =
+           client ??
+           (HttpClient()
+             ..maxConnectionsPerHost = 3
+             ..connectionTimeout = const Duration(seconds: 10)
+             ..idleTimeout = const Duration(seconds: 5));
 
   /// Shared HTTP client for the single stream request.
   final HttpClient _client;
@@ -89,6 +90,4 @@ class SingleStreamDownloader extends Downloader {
     super.cleanup();
     _client.close();
   }
-
-
 }
