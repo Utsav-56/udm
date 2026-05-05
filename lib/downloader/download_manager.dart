@@ -16,6 +16,7 @@ import 'dart:io';
 import 'package:udm/downloader/downloader.dart';
 import 'package:udm/downloader/head_parser.dart';
 import 'package:udm/downloader/models/downloader_config.dart';
+import 'package:udm/downloader/models/file_type_entry.dart';
 import 'package:udm/downloader/models/manager_preferences.dart';
 
 /// Represents a queued download operation awaiting execution.
@@ -43,14 +44,23 @@ class DownloadTask {
 /// fetches file metadata via [sendHeadRequest] and spawns either a
 /// [MultiStreamDownload] or [SingleStreamDownloader] based on server support.
 class DownloadManager {
+  /// The preferences of the download manager.
+  late ManagerPreferences preferences;
+  late FileTypePreference typePreference;
+
   /// Creates a [DownloadManager].
   ///
   /// If [preferences] is not provided, it defaults to [ManagerPreferences.fromFile].
-  DownloadManager({ManagerPreferences? preferences})
-    : preferences = preferences ?? ManagerPreferences.fromFile();
+  DownloadManager({ManagerPreferences? preferences}) {
+    this.preferences = preferences ?? ManagerPreferences.fromFile();
+    this.typePreference = FileTypePreference.fromFile();
+  }
 
-  /// The preferences of the download manager.
-  ManagerPreferences preferences;
+  /// refreshes the preferences
+  void refreshPreferences() {
+    preferences = ManagerPreferences.fromFile();
+    typePreference = FileTypePreference.fromFile();
+  }
 
   /// A registry of all instantiated downloaders, keyed by their unique timestamped ID.
   ///

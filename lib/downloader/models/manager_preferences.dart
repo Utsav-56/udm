@@ -126,8 +126,6 @@ abstract class ManagerPreferences with _$ManagerPreferences {
   void saveToFile() {
     _ensurePrefsFile();
     final file = File(prefFilePath);
-    file.writeAsStringSync(
-      const JsonEncoder.withIndent("  ").convert(toJson()),
-    );
+    file.writeAsStringSync(const JsonEncoder.withIndent("  ").convert(toJson()));
   }
 }
